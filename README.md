@@ -11,6 +11,11 @@ Cross-platform port of Arx Fatalis
 Arx Libertatis is based on the publicly released [Arx Fatalis source code](https://web.archive.org/web/20180105233341/https://www.arkane-studios.com/uk/arx_downloads.php).
 The source code is available under the GPLv3+ license with some additional terms - see the COPYING and LICENSE files for details.
 
+## Fork
+
+The main purpose of this fork is my own vision of ArxLiberatis. Minimize dependencies (no Boost, no GLM). No to C++ STL, EASTL instead of this. Orthodox C++ only: [https://gist.github.com/bkaradzic/2e39896bc7d8c34e042b](https://gist.github.com/bkaradzic/2e39896bc7d8c34e042b).
+Please, do not rely on this fork. Since this repository is not stable use it only for tests.
+
 ## Contact
 
 Website: [arx-libertatis.org](https://arx-libertatis.org/)
