@@ -87,7 +87,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "gui/Speech.h"
 #include "gui/Interface.h"
 #include "gui/MiniMap.h"
-#include "gui/hud/SecondaryInventory.h"
+#include "gui/hud/PlayerInventory.h"
 
 #include "graphics/BaseGraphicsTypes.h"
 #include "graphics/Color.h"
@@ -274,9 +274,9 @@ void ARX_PLAYER_ClickedOnTorch(Entity * io)
 		ARX_SOUND_PlaySFX(g_snd.TORCH_START);
 		player.torch_loop = ARX_SOUND_PlaySFX_loop(g_snd.TORCH_LOOP, NULL, 1.f);
 		
-		RemoveFromAllInventories(io);
-		player.torch = io;
+		removeFromInventories(io);
 		io->show = SHOW_FLAG_ON_PLAYER;
+		player.torch = io;
 
 		if(DRAGINTER == io)
 			DRAGINTER = NULL;
@@ -824,7 +824,7 @@ void ARX_PLAYER_MakeAverageHero() {
  */
 void ARX_PLAYER_QuickGeneration() {
 	
-	char old_skin = player.skin;
+	unsigned char old_skin = player.skin;
 	ARX_PLAYER_MakeFreshHero();
 	player.skin = old_skin;
 
@@ -2392,8 +2392,7 @@ void ARX_PLAYER_Start_New_Quest() {
 	ARX_PLAYER_MakeFreshHero();
 	player.torch = NULL;
 	entities.clear();
-	SecondaryInventory = NULL;
-	TSecondaryInventory = NULL;
+	svar.clear();
 	ARX_EQUIPMENT_UnEquipAllPlayer();
 	
 	ARX_CHANGELEVEL_StartNew();
@@ -2579,6 +2578,7 @@ void ARX_GAME_Reset() {
 
 		// Player Inventory
 		CleanInventory();
+		g_playerInventoryHud.setCurrentBag(0);
 	}
 
 	// Misc Player Vars.
@@ -2589,7 +2589,7 @@ void ARX_GAME_Reset() {
 	player.jumplastposition = 0;
 	player.jumpstarttime = 0;
 	player.jumpphase = NotJumping;
-	player.inzone = NULL;
+	entities.player()->inzone = NULL;
 
 	RemoveQuakeFX();
 	player.m_improve = false;
@@ -2615,8 +2615,6 @@ void ARX_GAME_Reset() {
 	ARX_INTERFACE_Reset();
 	ARX_INTERFACE_NoteClear();
 	Set_DragInter(NULL);
-	SecondaryInventory = NULL;
-	TSecondaryInventory = NULL;
 	g_cameraEntity = NULL;
 	CHANGE_LEVEL_ICON = NoChangeLevel;
 	

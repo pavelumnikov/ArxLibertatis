@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -238,6 +238,8 @@ struct PlayerMisc {
 
 struct ARXCHARACTER {
 	
+	// TODO a lot of these fields are duplicated from the player Entity
+	
 	Vec3f pos;
 	Anglef angle;
 	IO_PHYSICS physics;
@@ -263,7 +265,6 @@ struct ARXCHARACTER {
 	
 	Anglef desiredangle;
 	Vec3f size;
-	ARX_PATH * inzone;
 	
 	bool falling;
 	short doingmagic;
@@ -315,10 +316,10 @@ struct ARXCHARACTER {
 	short level;
 	
 	long xp;
-	char skin;
+	unsigned char skin;
 	
 	RuneFlags rune_flags;
-	bool hasRune(Rune rune) {
+	bool hasRune(Rune rune) const {
 		return (rune_flags & RuneFlag(1 << rune)) != 0;
 	}
 	
@@ -355,7 +356,6 @@ struct ARXCHARACTER {
 		, m_telekinesis(false)
 		, m_improve(false)
 		, size(0.f)
-		, inzone(NULL)
 		, falling(false)
 		, doingmagic(0)
 		, onfirmground(false)
@@ -391,11 +391,11 @@ struct ARXCHARACTER {
 	
 	static Vec3f baseOffset() { return Vec3f(0.f, baseHeight(), 0.f); }
 	
-	Vec3f basePosition() {
+	Vec3f basePosition() const {
 		return Vec3f(pos.x, pos.y - baseHeight(), pos.z);
 	}
 	
-	Cylinder baseCylinder() {
+	Cylinder baseCylinder() const {
 		return Cylinder(basePosition(), baseRadius(), baseHeight());
 	}
 	

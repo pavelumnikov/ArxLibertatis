@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -61,8 +61,6 @@ public:
 	
 	typedef std::vector<File> FileList;
 	
-public:
-	
 	explicit ErrorReport(const QString & sharedMemoryName);
 	
 	bool GenerateReport(IProgressNotifier * progressNotifier);
@@ -87,8 +85,6 @@ private:
 	void AddFile(const QString & fileName);
 	
 	void ReleaseApplicationLock();
-	
-private:
 	
 	FileList m_AttachedFiles;
 	

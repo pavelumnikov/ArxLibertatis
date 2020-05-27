@@ -193,9 +193,6 @@ void MakeUserFlag(TextureContainer * tc) {
 // Warning Clear3DObj don't release Any pointer Just Clears Structures
 void EERIE_3DOBJ::clear() {
 	
-		point0 = pos = Vec3f(0.f);
-		angle = Anglef();
-
 		origin = 0;
 
 		vertexlocal.clear();
@@ -208,18 +205,14 @@ void EERIE_3DOBJ::clear() {
 
 		originaltextures.clear();
 		
-		quat = quat_identity();
 		linked.clear();
 
 		pbox = 0;
-		sdata = false;
 		
 		fastaccess = EERIE_FASTACCESS();
 		
 		m_skeleton = 0;
-		
-	cub.xmin = cub.ymin = cub.zmin = std::numeric_limits<float>::max();
-	cub.xmax = cub.ymax = cub.zmax = std::numeric_limits<float>::min();
+	
 }
 
 // TODO move to destructor?
@@ -240,24 +233,9 @@ EERIE_3DOBJ * Eerie_Copy(const EERIE_3DOBJ * obj) {
 	nouvo->pbox = NULL;
 	nouvo->m_skeleton = NULL;
 	
-	nouvo->angle = obj->angle;
-	nouvo->pos = obj->pos;
-	nouvo->cub.xmax = obj->cub.xmax;
-	nouvo->cub.xmin = obj->cub.xmin;
-	nouvo->cub.ymax = obj->cub.ymax;
-	nouvo->cub.ymin = obj->cub.ymin;
-	nouvo->cub.zmax = obj->cub.zmax;
-	nouvo->cub.zmin = obj->cub.zmin;
+	nouvo->file = obj->file;
 	
-	if(!obj->file.empty())
-		nouvo->file = obj->file;
-	
-	if(!obj->name.empty())
-		nouvo->name = obj->name;
-
 	nouvo->origin = obj->origin;
-	nouvo->point0 = obj->point0;
-	nouvo->quat = obj->quat;
 	
 	nouvo->facelist = obj->facelist;
 	nouvo->grouplist = obj->grouplist;
@@ -442,5 +420,4 @@ void EERIE_OBJECT_CenterObjectCoordinates(EERIE_3DOBJ * ret)
 		ret->vertexlist[i].v -= offset;
 	}
 	
-	ret->point0 -= offset;
 }

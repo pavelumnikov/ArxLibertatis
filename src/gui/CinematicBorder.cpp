@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2014-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -34,12 +34,11 @@ CinematicBorder::CinematicBorder()
 	, m_startTime(0)
 {}
 
-bool CinematicBorder::isActive()
-{
+bool CinematicBorder::isActive() const {
 	return m_active;
 }
 
-GameDuration CinematicBorder::elapsedTime() {
+GameDuration CinematicBorder::elapsedTime() const {
 	return g_gameTime.now() - m_startTime;
 }
 
@@ -101,7 +100,7 @@ void CinematicBorder::update() {
 	}
 }
 
-void CinematicBorder::render() {
+void CinematicBorder::render() const {
 	
 	if(CINEMA_DECAL != 0.f) {
 		Rect rectz[2];

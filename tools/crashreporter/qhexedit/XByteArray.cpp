@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -31,7 +31,7 @@ XByteArray::XByteArray() {
 	_realAddressNumbers = 0;
 }
 
-int XByteArray::addressOffset() {
+int XByteArray::addressOffset() const {
 	return _addressOffset;
 }
 
@@ -39,7 +39,7 @@ void XByteArray::setAddressOffset(int offset) {
 	_addressOffset = offset;
 }
 
-int XByteArray::addressWidth() {
+int XByteArray::addressWidth() const {
 	return _addressNumbers;
 }
 

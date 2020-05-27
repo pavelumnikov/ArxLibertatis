@@ -62,6 +62,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "graphics/data/Mesh.h"
 
 #include "gui/Interface.h"
+#include "gui/hud/SecondaryInventory.h"
 
 #include "io/log/Logger.h"
 
@@ -227,15 +228,21 @@ Entity::~Entity() {
 		delete _camdata;
 	}
 	
-	if(SecondaryInventory && SecondaryInventory->io == this) {
-		SecondaryInventory = NULL;
-	}
+	g_secondaryInventoryHud.clear(this);
 	
-	if(TSecondaryInventory && TSecondaryInventory->io == this) {
-		TSecondaryInventory = NULL;
+	if(inventory) {
+		for(long nj = 0; nj < inventory->m_size.y; nj++) {
+			for(long ni = 0; ni < inventory->m_size.x; ni++) {
+				if(inventory->slot[ni][nj].io) {
+					inventory->slot[ni][nj].io->pos = GetItemWorldPosition(inventory->slot[ni][nj].io);
+					removeFromInventories(inventory->slot[ni][nj].io);
+				}
+				arx_assert(inventory->slot[ni][nj].io == NULL);
+				arx_assert(inventory->slot[ni][nj].show == false);
+			}
+		}
+		delete inventory;
 	}
-	
-	delete inventory;
 	
 	if(m_index != size_t(-1)) {
 		entities.remove(m_index);
@@ -278,7 +285,7 @@ void Entity::cleanReferences() {
 	
 	ARX_INTERACTIVE_DestroyDynamicInfo(this);
 	
-	RemoveFromAllInventories(this);
+	removeFromInventories(this);
 	
 	ARX_SCRIPT_Timer_Clear_For_IO(this);
 	
@@ -314,6 +321,9 @@ void Entity::destroy() {
 			}
 		}
 	}
+	
+	// TODO should we also destroy inventory items
+	// currently they remain orphaned with state SHOW_FLAG_IN_INVENTORY
 	
 	delete this;
 	

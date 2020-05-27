@@ -223,8 +223,7 @@ static long ObjectAddFace(EERIE_3DOBJ * obj, const EERIE_FACE * face, const EERI
 	return obj->facelist.size() - 1;
 }
 
-static void ObjectAddAction(EERIE_3DOBJ * obj, const std::string & name, long act,
-                            long sfx, const EERIE_VERTEX * vert) {
+static void ObjectAddAction(EERIE_3DOBJ * obj, const std::string & name, const EERIE_VERTEX * vert) {
 	
 	size_t newvert = ObjectAddVertex(obj, vert);
 	
@@ -240,8 +239,6 @@ static void ObjectAddAction(EERIE_3DOBJ * obj, const std::string & name, long ac
 	EERIE_ACTIONLIST & action = obj->actionlist.back();
 	
 	action.name = name;
-	action.act = act;
-	action.sfx = sfx;
 	action.idx = ActionPoint(newvert);
 }
 
@@ -392,12 +389,6 @@ static EERIE_3DOBJ * CreateIntermediaryMesh(const EERIE_3DOBJ * obj1, const EERI
 
 	// Work will contain the Tweaked object
 	EERIE_3DOBJ * work = new EERIE_3DOBJ;
-	work->pos = obj1->pos;
-	work->angle = obj1->angle;
-	
-	// We reset all data to create a fresh object
-	work->cub = obj1->cub;
-	work->quat = obj1->quat;
 	
 	// Linked objects are linked to this object.
 	if(obj1->linked.size() > obj2->linked.size()) {
@@ -408,10 +399,8 @@ static EERIE_3DOBJ * CreateIntermediaryMesh(const EERIE_3DOBJ * obj1, const EERI
 	
 	// Is the origin of object in obj1 or obj2 ? Retreives it for work object
 	if(IsInSelection(obj1, obj1->origin, tw1)) {
-		work->point0 = obj2->point0;
 		work->origin = ObjectAddVertex(work, &obj2vertexlist2[obj2->origin]);
 	} else {
-		work->point0 = obj1->point0;
 		work->origin = ObjectAddVertex(work, &obj1vertexlist2[obj1->origin]);
 	}
 
@@ -424,7 +413,7 @@ static EERIE_3DOBJ * CreateIntermediaryMesh(const EERIE_3DOBJ * obj1, const EERI
 		   || action.name == "head2chest"
 		   || action.name == "chest2leggings"
 		) {
-			ObjectAddAction(work, action.name, action.act, action.sfx, &obj1vertexlist2[action.idx.handleData()]);
+			ObjectAddAction(work, action.name, &obj1vertexlist2[action.idx.handleData()]);
 		}
 	}
 
@@ -436,7 +425,7 @@ static EERIE_3DOBJ * CreateIntermediaryMesh(const EERIE_3DOBJ * obj1, const EERI
 		   || action.name == "head2chest"
 		   || action.name == "chest2leggings"
 		) {
-			ObjectAddAction(work, action.name, action.act, action.sfx, &obj2vertexlist2[action.idx.handleData()]);
+			ObjectAddAction(work, action.name, &obj2vertexlist2[action.idx.handleData()]);
 		}
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -155,7 +155,7 @@ public:
 	const res::path m_texName; // Name of texture
 	
 	Vec2i m_size;
-	Vec2i size() { return m_size; }
+	Vec2i size() const { return m_size; }
 	
 	TCFlags m_dwFlags;
 	u32 userflags;

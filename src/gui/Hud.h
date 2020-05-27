@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2014-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -265,6 +265,7 @@ public:
 class PrecastSpellsGui : public HudItem {
 	
 	struct PrecastSpellIconSlot {
+		
 		Rectf m_rect;
 		TextureContainer * m_tc;
 		Color m_color;
@@ -272,7 +273,8 @@ class PrecastSpellsGui : public HudItem {
 		
 		void update(const Rectf & rect, TextureContainer * tc, Color color, PrecastHandle precastIndex);
 		void updateInput();
-		void draw();
+		void draw() const;
+		
 	};
 	
 	std::vector<PrecastSpellIconSlot> m_icons;
@@ -292,6 +294,7 @@ public:
 class ActiveSpellsGui : public HudItem {
 	
 	struct ActiveSpellIconSlot {
+		
 		Rectf m_rect;
 		TextureContainer * m_tc;
 		Color m_color;
@@ -300,7 +303,8 @@ class ActiveSpellsGui : public HudItem {
 		bool m_abortable;
 		
 		void updateInput(const Vec2f & mousePos);
-		void draw();
+		void draw() const;
+		
 	};
 	
 	TextureContainer * m_texUnknown;

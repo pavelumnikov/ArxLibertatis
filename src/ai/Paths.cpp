@@ -72,18 +72,19 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "script/Script.h"
 
-std::vector<ARX_PATH *> g_paths;
+std::vector<Zone> g_zones;
+std::vector<Path> g_paths;
 
-static void ARX_PATH_ComputeBB(ARX_PATH * ap) {
+static void ARX_PATH_ComputeBB(Zone * ap) {
 	
 	ap->bbmin = Vec3f(9999999999.f);
 	ap->bbmax = Vec3f(-9999999999.f);
 	
-	BOOST_FOREACH(const ARX_PATHWAY & pathway, ap->pathways) {
-		ap->bbmin.x = std::min(ap->bbmin.x, ap->pos.x + pathway.rpos.x);
-		ap->bbmax.x = std::max(ap->bbmax.x, ap->pos.x + pathway.rpos.x);
-		ap->bbmin.z = std::min(ap->bbmin.z, ap->pos.z + pathway.rpos.z);
-		ap->bbmax.z = std::max(ap->bbmax.z, ap->pos.z + pathway.rpos.z);
+	BOOST_FOREACH(const Vec3f & rpos, ap->pathways) {
+		ap->bbmin.x = std::min(ap->bbmin.x, ap->pos.x + rpos.x);
+		ap->bbmax.x = std::max(ap->bbmax.x, ap->pos.x + rpos.x);
+		ap->bbmin.z = std::min(ap->bbmin.z, ap->pos.z + rpos.z);
+		ap->bbmax.z = std::max(ap->bbmax.z, ap->pos.z + rpos.z);
 	}
 	
 	if(ap->height > 0) {
@@ -93,17 +94,16 @@ static void ARX_PATH_ComputeBB(ARX_PATH * ap) {
 		ap->bbmin.y = -99999999.f;
 		ap->bbmax.y = 99999999.f;
 	}
+	
 }
 
 void ARX_PATH_ComputeAllBoundingBoxes() {
-	BOOST_FOREACH(ARX_PATH * path, g_paths) {
-		if(path) {
-			ARX_PATH_ComputeBB(path);
-		}
+	BOOST_FOREACH(Zone & zone, g_zones) {
+		ARX_PATH_ComputeBB(&zone);
 	}
 }
 
-long ARX_PATH_IsPosInZone(ARX_PATH * ap, Vec3f pos) {
+long ARX_PATH_IsPosInZone(const Zone * ap, Vec3f pos) {
 	
 	if(pos.x < ap->bbmin.x || pos.x > ap->bbmax.x || pos.z < ap->bbmin.z || pos.z > ap->bbmax.z
 	   || pos.y < ap->bbmin.y || pos.y > ap->bbmax.y) {
@@ -116,8 +116,8 @@ long ARX_PATH_IsPosInZone(ARX_PATH * ap, Vec3f pos) {
 	pos.z -= ap->pos.z;
 	
 	for(size_t i = 0, j = ap->pathways.size() - 1; i < ap->pathways.size(); j = i++) {
-		const Vec3f & pi = ap->pathways[i].rpos;
-		const Vec3f & pj = ap->pathways[j].rpos;
+		const Vec3f & pi = ap->pathways[i];
+		const Vec3f & pj = ap->pathways[j];
 		if(((pi.z <= pos.z && pos.z < pj.z) || (pj.z <= pos.z && pos.z < pi.z))
 		   && (pos.x < (pj.x - pi.x) * (pos.z - pi.z) / (pj.z - pi.z) + pi.x)) {
 			c = !c;
@@ -127,29 +127,27 @@ long ARX_PATH_IsPosInZone(ARX_PATH * ap, Vec3f pos) {
 	return c;
 }
 
-static ARX_PATH * ARX_PATH_CheckInZone(const Vec3f & pos) {
+static Zone * ARX_PATH_CheckInZone(const Vec3f & pos) {
 	
-	BOOST_FOREACH(ARX_PATH * path, g_paths) {
-		if(path && path->height != 0) {
-			if(ARX_PATH_IsPosInZone(path, pos)) {
-				return path;
-			}
+	BOOST_FOREACH(Zone & zone, g_zones) {
+		if(ARX_PATH_IsPosInZone(&zone, pos)) {
+			return &zone;
 		}
 	}
 	
 	return NULL;
 }
 
-static ARX_PATH * ARX_PATH_CheckInZone(Entity * io) {
+static Zone * ARX_PATH_CheckInZone(Entity * io) {
 	arx_assert(io);
 	return ARX_PATH_CheckInZone(GetItemWorldPosition(io));
 }
 
-static ARX_PATH * ARX_PATH_CheckPlayerInZone() {
+static Zone * ARX_PATH_CheckPlayerInZone() {
 	return ARX_PATH_CheckInZone(player.pos + Vec3f(0.f, 160.f, 0.f));
 }
 
-static void EntityEnteringCurrentZone(Entity * io, ARX_PATH * current) {
+static void EntityEnteringCurrentZone(Entity * io, Zone * current) {
 	
 	io->inzone_show = io->show;
 	
@@ -167,7 +165,7 @@ static void EntityEnteringCurrentZone(Entity * io, ARX_PATH * current) {
 	
 }
 
-static void EntityLeavingLastZone(Entity * io, ARX_PATH * last) {
+static void EntityLeavingLastZone(Entity * io, Zone * last) {
 	
 	SendIOScriptEvent(NULL, io, SM_LEAVEZONE, last->name);
 	
@@ -208,8 +206,8 @@ void ARX_PATH_UpdateAllZoneInOutInside() {
 			   && io->show != SHOW_FLAG_MEGAHIDE
 			) {
 				arx_assert(io->show != SHOW_FLAG_DESTROYED);
-				ARX_PATH * current = ARX_PATH_CheckInZone(io);
-				ARX_PATH * last = io->inzone;
+				Zone * current = ARX_PATH_CheckInZone(io);
+				Zone * last = io->inzone;
 				
 				if(current != last) {
 					// Changed zones
@@ -236,81 +234,53 @@ void ARX_PATH_UpdateAllZoneInOutInside() {
 
 	// player check*************************************************
 	{
-		ARX_PATH * current = ARX_PATH_CheckPlayerInZone();
-		ARX_PATH * last = player.inzone;
+		Zone * current = ARX_PATH_CheckPlayerInZone();
+		Zone * last = entities.player()->inzone;
 
 		if(current != last) {
 			
-			if(last && !current) {
-				
-				// TODO why is this not sent when changing directly between zones
-				
-				SendIOScriptEvent(NULL, entities.player(), SM_LEAVEZONE, last->name);
+			if(last) {
 				CHANGE_LEVEL_ICON = NoChangeLevel;
-				
+				EntityLeavingLastZone(entities.player(), last);
 			}
 			
-			if(!last && current) {
-				
-				// TODO why is this not sent when changing directly between zones
-				
-				SendIOScriptEvent(NULL, entities.player(), SM_ENTERZONE, current->name);
-				
-				if(current->flags & PATH_AMBIANCE && !current->ambiance.empty()) {
+			if(current) {
+				if(!current->ambiance.empty()) {
 					ARX_SOUND_PlayZoneAmbiance(current->ambiance, ARX_SOUND_PLAY_LOOPED, current->amb_max_vol * 0.01f);
 				}
-				
 				if(current->flags & PATH_FARCLIP) {
 					g_desiredFogParameters.flags |= GMOD_ZCLIP;
 					g_desiredFogParameters.zclip = current->farclip;
 				}
-				
 				if(current->flags & PATH_RGB) {
 					g_desiredFogParameters.flags |= GMOD_DCOLOR;
 					g_desiredFogParameters.depthcolor = current->rgb;
 				}
-				
-			}
-			
-			if(last && !last->controled.empty()) {
-				EntityHandle t = entities.getById(last->controled);
-				if(t != EntityHandle()) {
-					ScriptParameters parameters;
-					parameters.push_back("player");
-					parameters.push_back(last->name);
-					SendIOScriptEvent(NULL, entities[t], SM_CONTROLLEDZONE_LEAVE, parameters);
-				}
-			}
-			
-			if(current && !current->controled.empty()) {
-				EntityHandle t = entities.getById(current->controled);
-				if(t != EntityHandle()) {
-					ScriptParameters parameters;
-					parameters.push_back("player");
-					parameters.push_back(current->name);
-					SendIOScriptEvent(NULL, entities[t], SM_CONTROLLEDZONE_ENTER, parameters);
-				}
+				EntityEnteringCurrentZone(entities.player(), current);
 			}
 			
 		}
 		
-		player.inzone = current;
+		entities.player()->inzone = current;
 	}
 	
 }
 
-ARX_PATH::ARX_PATH(const std::string & _name, const Vec3f & _pos)
+Zone::Zone(const std::string & _name, const Vec3f & _pos)
 	: name(_name)
 	, flags(0)
-	, initpos(_pos)
 	, pos(_pos)
 	, height(0)
 	, rgb(Color3f::black)
 	, farclip(0.f)
-	, reverb(0.f)
 	, amb_max_vol(0.f)
 	, bbmin(0.f)
 	, bbmax(0.f)
+{ }
+
+Path::Path(const std::string & _name, const Vec3f & _pos)
+	: name(_name)
+	, pos(_pos)
 { }
 
 void ARX_PATH_ClearAllUsePath() {
@@ -323,22 +293,35 @@ void ARX_PATH_ClearAllUsePath() {
 }
 
 void ARX_PATH_ClearAllControled() {
-	BOOST_FOREACH(ARX_PATH * path, g_paths) {
-		if(path) {
-			path->controled.clear();
-		}
+	BOOST_FOREACH(Zone & zone, g_zones) {
+		zone.controled.clear();
 	}
 }
 
-ARX_PATH * ARX_PATH_GetAddressByName(const std::string & name) {
-
+Zone * getZoneByName(const std::string & name) {
+	
 	if(name.empty()) {
 		return NULL;
 	}
 	
-	BOOST_FOREACH(ARX_PATH * path, g_paths) {
-		if(path && path->name == name) {
-			return path;
+	BOOST_FOREACH(Zone & zone, g_zones) {
+		if(zone.name == name) {
+			return &zone;
+		}
+	}
+	
+	return NULL;
+}
+
+const Path * getPathByName(const std::string & name) {
+	
+	if(name.empty()) {
+		return NULL;
+	}
+	
+	BOOST_FOREACH(const Path & path, g_paths) {
+		if(path.name == name) {
+			return &path;
 		}
 	}
 	
@@ -349,22 +332,19 @@ void ARX_PATH_ReleaseAllPath() {
 	
 	ARX_PATH_ClearAllUsePath();
 	
-	BOOST_FOREACH(ARX_PATH * path, g_paths) {
-		delete path;
-	}
-	
+	g_zones.clear();
 	g_paths.clear();
 	
 }
 
-Vec3f ARX_PATH::interpolateCurve(size_t i, float step) const {
+Vec3f Path::interpolateCurve(size_t i, float step) const {
 	Vec3f p0 = pathways[i + 0].rpos, p1 = pathways[i + 1].rpos, p2 = pathways[i + 2].rpos;
 	return pos + p0 * (1 - step) + p1 * (step - square(step)) + p2 * square(step);
 }
 
 long ARX_PATHS_Interpolate(ARX_USE_PATH * aup, Vec3f * pos) {
 	
-	ARX_PATH * ap = aup->path;
+	const Path * ap = aup->path;
 	
 	// compute Delta Time
 	GameDuration tim = aup->_curtime - aup->_starttime;
@@ -383,90 +363,38 @@ long ARX_PATHS_Interpolate(ARX_USE_PATH * aup, Vec3f * pos) {
 	size_t targetwaypoint = 1;
 	aup->aupflags &= ~ARX_USEPATH_FLAG_FINISHED;
 
-	if(!ap->pathways.empty()) {
-		ap->pathways[0]._time = 0;
-		ap->pathways[0].rpos = Vec3f(0.f);
-	} else {
+	if(ap->pathways.empty()) {
 		return -1;
 	}
 	
 	// While we have time left, iterate
-	while(tim > 0) {
+	while(targetwaypoint < ap->pathways.size()) {
 		
-		// Path Ended
-		if(targetwaypoint >= ap->pathways.size()) {
-			*pos += ap->pos;
-			aup->aupflags |= ARX_USEPATH_FLAG_FINISHED;
-			return -2;
+		bool bezier = (ap->pathways[targetwaypoint - 1].flag == PATHWAY_BEZIER
+		               && targetwaypoint + 1 < ap->pathways.size());
+		if(bezier) {
+			targetwaypoint++;
 		}
 		
-		// Manages a Bezier block
-		if(ap->pathways[targetwaypoint - 1].flag == PATHWAY_BEZIER) {
-			
-			targetwaypoint += 1;
-			GameDuration delta = tim - ap->pathways[targetwaypoint]._time;
-			
-			if(delta >= 0) {
-				
-				tim = delta;
-				
-				if(targetwaypoint < ap->pathways.size()) {
-					*pos = ap->pathways[targetwaypoint].rpos;
-				}
-				
-				targetwaypoint += 1;
-				
-			} else {
-				
-				if(targetwaypoint < ap->pathways.size()) {
-					
-					if(ap->pathways[targetwaypoint]._time == 0) {
-						return targetwaypoint - 1;
-					}
-					
-					float rel = tim / ap->pathways[targetwaypoint]._time;
-					*pos = ap->interpolateCurve(targetwaypoint - 2, rel);
-				}
-				
-				return targetwaypoint - 1;
-			}
-			
+		GameDuration delta = tim - ap->pathways[targetwaypoint]._time;
+		if(delta >= 0) {
+			tim = delta;
+			targetwaypoint++;
+			continue;
+		}
+		
+		float rel = tim / ap->pathways[targetwaypoint]._time;
+		
+		if(bezier) {
+			*pos = ap->interpolateCurve(targetwaypoint - 2, rel);
 		} else {
-			
-			// Manages a non-Bezier block
-			GameDuration delta = tim - ap->pathways[targetwaypoint]._time;
-			
-			if(delta >= 0) {
-				
-				tim = delta;
-				
-				if(targetwaypoint < ap->pathways.size()) {
-					*pos = ap->pathways[targetwaypoint].rpos;
-				}
-				
-				targetwaypoint++;
-				
-			} else {
-				
-				if(targetwaypoint < ap->pathways.size()) {
-					
-					if(ap->pathways[targetwaypoint]._time == 0) {
-						return targetwaypoint - 1;
-					}
-					
-					float rel = tim / ap->pathways[targetwaypoint]._time;
-					
-					*pos += (ap->pathways[targetwaypoint].rpos - *pos) * rel;
-				}
-				
-				*pos += ap->pos;
-				
-				return targetwaypoint - 1;
-			}
+			*pos = ap->pos + glm::mix(ap->pathways[targetwaypoint - 1].rpos, ap->pathways[targetwaypoint].rpos, rel);
 		}
+		
+		return targetwaypoint - 1;
 	}
-
-	*pos += ap->pos;
 	
-	return targetwaypoint;
+	*pos = ap->pos + ap->pathways[ap->pathways.size() - 1].rpos;
+	aup->aupflags |= ARX_USEPATH_FLAG_FINISHED;
+	return -2;
 }

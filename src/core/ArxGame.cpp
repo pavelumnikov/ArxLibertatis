@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -126,6 +126,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "gui/TextManager.h"
 #include "gui/debug/DebugHud.h"
 #include "gui/debug/DebugHudAudio.h"
+#include "gui/hud/PlayerInventory.h"
 
 #include "input/Input.h"
 #include "input/Keyboard.h"
@@ -781,6 +782,7 @@ bool ArxGame::initGame()
 	ARX_PLAYER_InitPlayer();
 	
 	CleanInventory();
+	g_playerInventoryHud.setCurrentBag(0);
 	
 	ARX_SPEECH_FirstInit();
 	notification_init();
@@ -1161,14 +1163,13 @@ void ArxGame::run() {
 		
 		platform::reapZombies();
 		
-		m_MainWindow->tick();
-		if(!m_RunLoop) {
-			break;
-		}
-		
 		if(m_MainWindow->isVisible() && !m_MainWindow->isMinimized() && m_bReady) {
 			doFrame();
+			m_MainWindow->processEvents(/*waitForEvent = */false);
+		} else {
+			m_MainWindow->processEvents(/*waitForEvent = */true);
 		}
+		
 	}
 	
 	benchmark::begin(benchmark::Shutdown);

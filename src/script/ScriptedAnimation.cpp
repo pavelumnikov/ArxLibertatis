@@ -428,7 +428,7 @@ public:
 		
 		DebugScript(' ' << zone);
 		
-		ARX_PATH * ap = ARX_PATH_GetAddressByName(zone);
+		Zone * ap = getZoneByName(zone);
 		if(!ap) {
 			ScriptWarning << "unknown zone: " << zone;
 			return Failed;
@@ -466,7 +466,7 @@ public:
 			io->usepath = NULL;
 		} else {
 			
-			ARX_PATH * ap = ARX_PATH_GetAddressByName(name);
+			const Path * ap = getPathByName(name);
 			if(!ap) {
 				ScriptWarning << "unknown path: " << name;
 				return Failed;
@@ -484,7 +484,6 @@ public:
 			if(followdir) {
 				aup->aupflags |= ARX_USEPATH_FOLLOW_DIRECTION;
 			}
-			aup->initpos = io->initpos;
 			aup->lastWP = -1;
 			aup->path = ap;
 			io->usepath = aup;
@@ -499,7 +498,7 @@ class SetControlledZoneCommand : public Command {
 	
 public:
 	
-	SetControlledZoneCommand() : Command("setcontrolledzone") { }
+	SetControlledZoneCommand() : Command("setcontrolledzone", AnyEntity) { }
 	
 	Result execute(Context & context) {
 		
@@ -507,7 +506,7 @@ public:
 		
 		DebugScript(' ' << name);
 		
-		ARX_PATH * ap = ARX_PATH_GetAddressByName(name);
+		Zone * ap = getZoneByName(name);
 		if(!ap) {
 			ScriptWarning << "unknown zone: " << name;
 			return Failed;

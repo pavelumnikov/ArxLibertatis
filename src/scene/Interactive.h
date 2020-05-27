@@ -64,7 +64,6 @@ namespace res { class path; }
 enum TargetInfo {
 	TARGET_PATH = -3,
 	TARGET_NONE = -2,
-	TARGET_PLAYER = 0,
 };
 
 enum AddInteractiveFlag {
@@ -190,5 +189,7 @@ void ResetVVPos(Entity * io);
 void UpdateGoldObject(Entity * io);
 
 extern long HERO_SHOW_1ST;
+
+void Set_DragInter(Entity * io);
 
 #endif // ARX_SCENE_INTERACTIVE_H

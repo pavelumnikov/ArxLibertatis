@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -89,7 +89,7 @@ public:
 	
 	MenuPage * getPage(MENUSTATE id) const;
 	
-	float scroll() { return fAngle; }
+	float scroll() const { return fAngle; }
 	void setScroll(float scroll) { fAngle = scroll; }
 	
 private:

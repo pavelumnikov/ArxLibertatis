@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2014-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -33,7 +33,7 @@ public:
 	void End();
 	void Update();
 	
-	Vec3f getPosition();
+	Vec3f getPosition() const;
 	
 };
 
@@ -48,7 +48,7 @@ public:
 	void End();
 	void Update();
 	
-	Vec3f getPosition();
+	Vec3f getPosition() const;
 	
 private:
 	
@@ -94,7 +94,7 @@ public:
 	void End();
 	void Update();
 	
-	Vec3f getPosition();
+	Vec3f getPosition() const;
 	
 private:
 	

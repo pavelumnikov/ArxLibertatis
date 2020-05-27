@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -66,7 +66,7 @@ public:
 	bool find(const char * id);
 	//! \return true if next four bytes = chunk id;
 	bool check(const char * id);
-	size_t size() { return offset; }
+	size_t size() const { return offset; }
 	bool restart();
 	
 private:

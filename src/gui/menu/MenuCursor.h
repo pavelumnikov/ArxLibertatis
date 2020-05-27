@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2015-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -62,7 +62,7 @@ public:
 	
 private:
 	
-	void DrawOneCursor(const Vec2s & mousePos);
+	void DrawOneCursor(const Vec2s & mousePos) const;
 	
 	Vec2s m_size;
 	bool exited; //! Has the mouse exited the window

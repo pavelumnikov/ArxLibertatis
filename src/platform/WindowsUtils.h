@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2015-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -31,6 +31,8 @@
 #include <windows.h>
 
 #include <boost/range/size.hpp>
+
+namespace fs { class path; }
 
 namespace platform {
 
@@ -68,8 +70,8 @@ public:
 	size_t capacity() const { return size_t(boost::size(m_static)) - 1; }
 	
 	WideString(const char * utf8, size_t length) : m_size(0) { assign(utf8, length); }
-	/* implicit */ WideString(const char * utf8) : m_size(0) { assign(utf8); }
-	/* implicit */ WideString(const std::string & utf8) : m_size(0) { assign(utf8); }
+	explicit WideString(const char * utf8) : m_size(0) { assign(utf8); }
+	explicit WideString(const std::string & utf8) : m_size(0) { assign(utf8); }
 	explicit WideString(size_t size) : m_size(0) { resize(size); }
 	WideString() : m_size(0) { m_static[0] = '\0'; }
 	
@@ -84,6 +86,8 @@ public:
 	size_t size() const { return dynamic() ? str().size() : m_size; }
 	size_t length() const { return size(); }
 	
+	void reserve(size_t futureSize);
+	
 	//! Resize the buffer but leave the contents undefined
 	void allocate(size_t size);
 	
@@ -93,9 +97,13 @@ public:
 	//! Resize the buffer to the first NULL byte
 	void compact();
 	
-	void assign(const char * utf8, size_t length);
+	void assign(const char * utf8, size_t length, size_t offset = 0);
 	void assign(const char * utf8) { assign(utf8, std::strlen(utf8)); }
 	void assign(const std::string & utf8) { assign(utf8.data(), utf8.length()); }
+	
+	void append(const char * utf8, size_t length) { assign(utf8, length, size()); }
+	void append(const char * utf8) { append(utf8, std::strlen(utf8)); }
+	void append(const std::string & utf8) { append(utf8.data(), utf8.length()); }
 	
 	WideString & operator=(const char * utf8) {
 		assign(utf8);
@@ -103,6 +111,17 @@ public:
 	}
 	WideString & operator=(const std::string & utf8) {
 		assign(utf8);
+		return *this;
+	}
+	
+	void assign(const WCHAR * text, size_t length, size_t offset = 0);
+	void assign(const WCHAR * text) { assign(text, std::wcslen(text)); }
+	
+	void append(const WCHAR * text, size_t length) { assign(text, length, size()); }
+	void append(const WCHAR * text) { append(text, std::wcslen(text)); }
+	
+	WideString & operator=(const WCHAR * text) {
+		assign(text);
 		return *this;
 	}
 	
@@ -115,7 +134,26 @@ public:
 	
 };
 
-std::string getErrorString(WORD error = GetLastError(), HMODULE module = NULL);
+class WinPath : public WideString {
+	
+public:
+	
+	explicit WinPath(const fs::path & path) : WideString() { assign(path); }
+	explicit WinPath(size_t size) : WideString(size) { }
+	WinPath() : WideString() { }
+	
+	using WideString::assign;
+	void assign(const fs::path & path);
+	
+	using WideString::operator=;
+	WideString & operator=(const fs::path & path) {
+		assign(path);
+		return *this;
+	}
+	
+};
+
+std::string getErrorString(DWORD error = GetLastError(), HMODULE module = NULL);
 
 template <typename FunctionType>
 FunctionType getProcAddress(HMODULE module, const char * symbol) {

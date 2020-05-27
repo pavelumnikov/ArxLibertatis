@@ -157,9 +157,6 @@ EERIE_3DOBJ * ARX_FTL_Load(const res::path & file) {
 			
 		}
 		
-		// Set the origin point of the mesh
-		obj->point0 = obj->vertexlist[obj->origin].v;
-		
 		obj->vertexWorldPositions.resize(obj->vertexlist.size());
 		obj->vertexClipPositions.resize(obj->vertexlist.size());
 		obj->vertexColors.resize(obj->vertexlist.size());
@@ -178,18 +175,14 @@ EERIE_3DOBJ * ARX_FTL_Load(const res::path & file) {
 			face.facetype = PolyType::load(eff->facetype);
 			face.texid = eff->texid;
 			face.transval = eff->transval;
-			face.temp = eff->temp;
 			face.norm = eff->norm.toVec3();
 			
 			// Copy in all the texture and normals data
 			ARX_STATIC_ASSERT(IOPOLYVERT_FTL == IOPOLYVERT, "array size mismatch");
 			for(size_t kk = 0; kk < IOPOLYVERT_FTL; kk++) {
-				face.nrmls[kk] = eff->nrmls[kk].toVec3();
 				face.vid[kk] = eff->vid[kk];
 				face.u[kk] = eff->u[kk];
 				face.v[kk] = eff->v[kk];
-				face.ou[kk] = eff->ou[kk];
-				face.ov[kk] = eff->ov[kk];
 			}
 		}
 	}
@@ -272,21 +265,12 @@ EERIE_3DOBJ * ARX_FTL_Load(const res::path & file) {
 	
 	obj->pbox = NULL; // Reset physics
 	
-	if(afsh->offset_collision_spheres != -1) {
-		obj->sdata = true;
-	}
-	
 	EERIE_OBJECT_CenterObjectCoordinates(obj);
 	EERIE_CreateCedricData(obj);
 	// Now we can release our cool FTL file
 	EERIE_Object_Precompute_Fast_Access(obj);
 	
 	LogDebug("ARX_FTL_Load: loaded object " << filename);
-	
-	arx_assert(obj->pos == Vec3f(0.f));
-	arx_assert(obj->point0 == Vec3f(0.f));
-	arx_assert(obj->angle == Anglef());
-	arx_assert(obj->quat == quat_identity());
 	
 	return obj;
 }

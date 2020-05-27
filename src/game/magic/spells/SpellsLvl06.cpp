@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2014-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -183,7 +183,7 @@ void RiseDeadSpell::Update() {
 				ARX_INTERACTIVE_HideGore(io);
 				RestoreInitialIOStatusOfIO(io);
 				
-				io->summoner = m_caster;
+				io->_npcdata->summoner = m_caster;
 				
 				io->ioflags |= IO_NOSAVE;
 				m_entity = io->index();
@@ -251,7 +251,7 @@ void ParalyseSpell::End() {
 	ARX_SOUND_PlaySFX(g_snd.SPELL_PARALYSE_END);
 }
 
-Vec3f ParalyseSpell::getPosition() {
+Vec3f ParalyseSpell::getPosition() const {
 	return getTargetPosition();
 }
 
@@ -353,8 +353,7 @@ void CreateFieldSpell::Update() {
 	}
 }
 
-Vec3f CreateFieldSpell::getPosition() {
-	
+Vec3f CreateFieldSpell::getPosition() const {
 	return m_field.eSrc;
 }
 
@@ -427,7 +426,6 @@ void SlowDownSpell::Update() {
 	
 }
 
-Vec3f SlowDownSpell::getPosition() {
-	
+Vec3f SlowDownSpell::getPosition() const {
 	return getTargetPosition();
 }

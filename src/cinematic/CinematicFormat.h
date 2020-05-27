@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -68,7 +68,7 @@ struct CinematicLight_1_71 {
 	s32 prev; // ignored
 	s32 next; // ignored
 	
-	operator CinematicLight() {
+	operator CinematicLight() const {
 		CinematicLight l;
 		l.pos = pos.toVec3();
 		l.fallin = fallin;

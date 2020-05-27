@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -67,7 +67,7 @@ void QHexEditPrivate::setAddressOffset(int offset) {
 	adjust();
 }
 
-int QHexEditPrivate::addressOffset() {
+int QHexEditPrivate::addressOffset() const {
 	return _xData.addressOffset();
 }
 
@@ -87,7 +87,7 @@ void QHexEditPrivate::setAddressAreaColor(const QColor & color) {
 	update();
 }
 
-QColor QHexEditPrivate::addressAreaColor() {
+QColor QHexEditPrivate::addressAreaColor() const {
 	return _addressAreaColor;
 }
 
@@ -96,7 +96,7 @@ void QHexEditPrivate::setHighlightingColor(const QColor & color) {
 	update();
 }
 
-QColor QHexEditPrivate::highlightingColor() {
+QColor QHexEditPrivate::highlightingColor() const {
 	return _highlightingColor;
 }
 
@@ -105,7 +105,7 @@ void QHexEditPrivate::setSelectionColor(const QColor & color) {
 	update();
 }
 
-QColor QHexEditPrivate::selectionColor() {
+QColor QHexEditPrivate::selectionColor() const {
 	return _selectionColor;
 }
 
@@ -113,7 +113,7 @@ void QHexEditPrivate::setReadOnly(bool readOnly) {
 	_readOnly = readOnly;
 }
 
-bool QHexEditPrivate::isReadOnly() {
+bool QHexEditPrivate::isReadOnly() const {
 	return _readOnly;
 }
 
@@ -200,7 +200,7 @@ void QHexEditPrivate::setOverwriteMode(bool overwriteMode) {
 	_overwriteMode = overwriteMode;
 }
 
-bool QHexEditPrivate::overwriteMode() {
+bool QHexEditPrivate::overwriteMode() const {
 	return _overwriteMode;
 }
 
@@ -642,7 +642,7 @@ void QHexEditPrivate::setCursorPos(int position) {
 	
 }
 
-int QHexEditPrivate::cursorPos(QPoint pos) {
+int QHexEditPrivate::cursorPos(QPoint pos) const {
 	
 	int result = -1;
 	
@@ -661,7 +661,7 @@ int QHexEditPrivate::cursorPos(QPoint pos) {
 	return result;
 }
 
-int QHexEditPrivate::cursorPos() {
+int QHexEditPrivate::cursorPos() const {
 	return _cursorPosition;
 }
 
@@ -695,11 +695,11 @@ void QHexEditPrivate::setSelection(int pos) {
 	
 }
 
-int QHexEditPrivate::getSelectionBegin() {
+int QHexEditPrivate::getSelectionBegin() const {
 	return _selectionBegin;
 }
 
-int QHexEditPrivate::getSelectionEnd() {
+int QHexEditPrivate::getSelectionEnd() const {
 	return _selectionEnd;
 }
 
@@ -713,7 +713,11 @@ void QHexEditPrivate::updateCursor() {
 
 void QHexEditPrivate::adjust() {
 	
+	#if QT_VERSION >= QT_VERSION_CHECK(5, 11, 0)
+	_charWidth = fontMetrics().horizontalAdvance(QLatin1Char('9'));
+	#else
 	_charWidth = fontMetrics().width(QLatin1Char('9'));
+	#endif
 	_charHeight = fontMetrics().height();
 	
 	_xPosAdr = 0;

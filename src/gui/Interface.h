@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -50,6 +50,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include <boost/range/size.hpp>
 
+#include "game/Inventory.h"
 #include "game/Spells.h"
 #include "math/Types.h"
 
@@ -66,10 +67,10 @@ class Entity;
 
 extern Entity * FlyingOverIO;
 
-//-----------------------------------------------------------------------------
-class INTERFACE_TC
-{
+class INTERFACE_TC {
+	
 public:
+	
 	INTERFACE_TC()
 		: playerbook(NULL)
 		, ic_casting(NULL)
@@ -98,8 +99,7 @@ public:
 	}
 	
 	void init();
-
-public:
+	
 	TextureContainer * playerbook;
 	TextureContainer * ic_casting;
 	TextureContainer * ic_close_combat;
@@ -127,6 +127,7 @@ public:
 	
 	std::string        Level;
 	std::string        Xp;
+	
 };
 
 enum E_ARX_STATE_MOUSE
@@ -139,8 +140,6 @@ enum E_ARX_STATE_MOUSE
 	MOUSE_IN_INVENTORY,
 	MOUSE_IN_NOTE
 };
-
-//-----------------------------------------------------------------------------
 
 enum ARX_INTERFACE_MOVE_MODE
 {
@@ -192,7 +191,6 @@ bool NeedHalo(Entity * io);
 
 void ARX_INTERFACE_HALO_Render(Color3f color, long _lHaloType, TextureContainer * haloTexture, Vec2f pos, Vec2f ratio);
 void ResetPlayerInterface();
-void Set_DragInter(Entity * io);
 
 void ARX_INTERFACE_DrawNumberInit();
 void ARX_INTERFACE_DrawNumber(const Vec2f & pos, long num, Color color, float scale);
@@ -204,5 +202,7 @@ float getInterfaceScale(float scaleFactor, bool roundToInteger);
 TextureStage::FilterMode getInterfaceTextureFilter();
 
 extern bool g_cursorOverBook;
+
+void updateCombineFlagForEntity(Entity * source, Entity * target);
 
 #endif // ARX_GUI_INTERFACE_H

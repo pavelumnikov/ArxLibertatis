@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2017 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -101,7 +101,7 @@ public:
 	/*!
 	 * \brief Wait until the thread exists
 	 */
-	void waitForCompletion();
+	void waitForCompletion() const;
 	
 	static thread_id_type getCurrentThreadId();
 	
@@ -132,7 +132,7 @@ public:
 		waitForCompletion();
 	}
 	
-	bool isStopRequested() {
+	bool isStopRequested() const {
 		return m_stopRequested;
 	}
 	

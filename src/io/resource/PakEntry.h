@@ -33,13 +33,11 @@ class PakFile : private boost::noncopyable {
 	
 private:
 	
-	size_t _size;
-	
 	PakFile * _alternative;
 	
 protected:
 	
-	explicit PakFile(size_t size) :  _size(size), _alternative(NULL) { }
+	explicit PakFile() : _alternative(NULL) { }
 	
 	virtual ~PakFile();
 	
@@ -48,11 +46,9 @@ protected:
 	
 public:
 	
-	size_t size() const { return _size; }
 	PakFile * alternative() const { return _alternative; }
 	
-	virtual void read(void * buf) const = 0;
-	std::string read() const;
+	virtual std::string read() const = 0;
 	
 	virtual PakFileHandle * open() const = 0;
 	

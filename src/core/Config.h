@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -238,8 +238,6 @@ public:
 		std::string debug; //!< Logger debug levels.
 		
 	} misc;
-	
-public:
 	
 	bool setActionKey(ControlAction actionId, size_t index, InputKeyId key);
 	void setDefaultActionKeys();

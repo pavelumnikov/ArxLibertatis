@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -59,6 +59,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include <boost/algorithm/string/case_conv.hpp>
 
 #include "ai/Paths.h"
+
+#include "audio/Audio.h"
 
 #include "core/Config.h"
 #include "core/Core.h"
@@ -143,7 +145,6 @@ struct Playthrough {
 	
 };
 
-long DONT_WANT_PLAYER_INZONE = 0;
 static SaveBlock * g_currentSavedGame = NULL;
 static Playthrough g_currentPlathrough;
 
@@ -208,7 +209,7 @@ static EntityHandle ReadTargetInfo(const char (&str)[N]) {
 	}
 }
 
-static s32 GetIOAnimIdx2(const Entity * io, ANIM_HANDLE * anim) {
+static s32 GetIOAnimIdx2(const Entity * io, const ANIM_HANDLE * anim) {
 	
 	if(!io || !anim) {
 		return -1;
@@ -234,11 +235,9 @@ bool ARX_Changelevel_CurGame_Clear() {
 	}
 	
 	// If there's a left over current game file, clear it
-	if(fs::is_regular_file(CURRENT_GAME_FILE)) {
-		if(!fs::remove(CURRENT_GAME_FILE)) {
-			LogError << "Failed to remove current game file " << CURRENT_GAME_FILE;
-			return false;
-		}
+	if(!fs::remove(CURRENT_GAME_FILE)) {
+		LogError << "Failed to remove current game file " << CURRENT_GAME_FILE;
+		return false;
 	}
 	
 	return true;
@@ -358,7 +357,8 @@ void ARX_CHANGELEVEL_Change(const std::string & level, const std::string & targe
 	
 	ARX_CHANGELEVEL_PopLevel(num, true, target, angle);
 	
-	DONT_WANT_PLAYER_INZONE = 1;
+	entities.player()->inzone = NULL;
+	
 	ARX_PLAYER_RectifyPosition();
 	GMOD_RESET = true;
 	
@@ -423,7 +423,7 @@ static bool ARX_CHANGELEVEL_Push_Index(long num) {
 	memset(&asi, 0, sizeof(asi));
 	asi.version       = ARX_GAMESAVE_VERSION;
 	asi.nb_inter      = 0;
-	asi.nb_paths      = s32(g_paths.size());
+	asi.nb_paths      = s32(g_zones.size());
 	asi.time          = toMsi(g_gameTime.now()); // TODO save/load time
 	asi.nb_lights     = 0;
 	asi.gmods_stacked = GLOBAL_MODS();
@@ -450,18 +450,23 @@ static bool ARX_CHANGELEVEL_Push_Index(long num) {
 		}
 	}
 	
+	std::vector<audio::AmbianceInfo> playlist;
+	audio::getAmbianceInfos(playlist);
+	BOOST_FOREACH(const audio::AmbianceInfo & info, playlist) {
+		if(info.type == audio::PLAYING_AMBIANCE_SCRIPT || info.type == audio::PLAYING_AMBIANCE_ZONE) {
+			asi.ambiances_data_size += sizeof(SavedPlayingAmbiance);
+		}
+	}
+	
 	size_t allocsize = sizeof(ARX_CHANGELEVEL_INDEX)
 	                   + sizeof(ARX_CHANGELEVEL_IO_INDEX) * asi.nb_inter
 	                   + sizeof(ARX_CHANGELEVEL_PATH) * asi.nb_paths
-	                   + sizeof(ARX_CHANGELEVEL_LIGHT) * asi.nb_lights;
-	
-	std::string playlist = ARX_SOUND_AmbianceSavePlayList();
-	allocsize += playlist.size();
+	                   + sizeof(ARX_CHANGELEVEL_LIGHT) * asi.nb_lights
+	                   + asi.ambiances_data_size;
 	
 	std::vector<char> buffer(allocsize);
 	char * dat = &buffer[0];
 	
-	asi.ambiances_data_size = playlist.size();
 	memcpy(dat, &asi, sizeof(ARX_CHANGELEVEL_INDEX));
 	pos += sizeof(ARX_CHANGELEVEL_INDEX);
 	
@@ -485,16 +490,26 @@ static bool ARX_CHANGELEVEL_Push_Index(long num) {
 		}
 	}
 	
-	BOOST_FOREACH(const ARX_PATH * path, g_paths) {
+	BOOST_FOREACH(const Zone & zone, g_zones) {
 		ARX_CHANGELEVEL_PATH * acp = reinterpret_cast<ARX_CHANGELEVEL_PATH *>(dat + pos);
 		memset(acp, 0, sizeof(ARX_CHANGELEVEL_PATH));
-		util::storeString(acp->name, path->name);
-		util::storeString(acp->controled, path->controled);
+		util::storeString(acp->name, zone.name);
+		util::storeString(acp->controled, zone.controled);
 		pos += sizeof(ARX_CHANGELEVEL_PATH);
 	}
 	
-	memcpy(dat + pos, playlist.data(), playlist.size());
-	pos += playlist.size();
+	BOOST_FOREACH(const audio::AmbianceInfo & info, playlist) {
+		if(info.type == audio::PLAYING_AMBIANCE_SCRIPT || info.type == audio::PLAYING_AMBIANCE_ZONE) {
+			SavedPlayingAmbiance * playing = reinterpret_cast<SavedPlayingAmbiance *>(dat + pos);
+			std::memset(playing, 0, sizeof(SavedPlayingAmbiance));
+			arx_assert(info.name.string().length() + 1 < size_t(boost::size(playing->name)));
+			util::storeString(playing->name, info.name.string());
+			playing->volume = info.volume;
+			playing->loop = info.isLooped ? 0 : 1;
+			playing->type = (info.type == audio::PLAYING_AMBIANCE_SCRIPT ? 1 : 2);
+			pos += sizeof(SavedPlayingAmbiance);
+		}
+	}
 	
 	for(size_t i = 0; i < g_staticLightsMax; i++) {
 		EERIE_LIGHT * el = g_staticLights[i];
@@ -760,7 +775,7 @@ static long ARX_CHANGELEVEL_Push_Player(long level) {
 	asp->Skill_Projectile = player.m_skill.projectile;
 	asp->Skill_Close_Combat = player.m_skill.closeCombat;
 	asp->Skill_Defense = player.m_skill.defense;
-	asp->skin = player.skin;
+	asp->skin = s32(player.skin);
 	
 	asp->xp = player.xp;
 	asp->nb_PlayerQuest = g_playerQuestLogEntries.size();
@@ -976,7 +991,6 @@ static long ARX_CHANGELEVEL_Push_IO(const Entity * io, long level) {
 		ARX_USE_PATH * aup = io->usepath;
 		ais.usepath_aupflags = aup->aupflags;
 		ais.usepath_curtime = checked_range_cast<u32>(toMsi(aup->_curtime)); // TODO save/load time
-		ais.usepath_initpos = aup->initpos;
 		ais.usepath_lastWP = aup->lastWP;
 		ais.usepath_starttime = checked_range_cast<u32>(toMsi(aup->_starttime)); // TODO save/load time
 		util::storeString(ais.usepath_name, aup->path->name);
@@ -1336,9 +1350,28 @@ static const ARX_CHANGELEVEL_INDEX * ARX_CHANGELEVEL_Pop_Index(const std::string
 	pos += sizeof(ARX_CHANGELEVEL_PATH) * asi->nb_paths;
 	
 	// Restore Ambiances
-	if(asi->ambiances_data_size) {
-		ARX_SOUND_AmbianceRestorePlayList(dat + pos, size_t(asi->ambiances_data_size));
-		pos += size_t(asi->ambiances_data_size);
+	size_t ambiances = asi->ambiances_data_size;
+	while(ambiances >= sizeof(SavedPlayingAmbiance)) {
+		const SavedPlayingAmbiance * playing = reinterpret_cast<const SavedPlayingAmbiance *>(dat + pos);
+		SoundLoopMode loop = (playing->loop == 0) ? ARX_SOUND_PLAY_LOOPED : ARX_SOUND_PLAY_ONCE;
+		res::path name = res::path::load(util::loadString(playing->name));
+		switch(playing->type) {
+			case 1: {
+				ARX_SOUND_PlayScriptAmbiance(name, loop, playing->volume);
+				break;
+			}
+			case 2: {
+				ARX_SOUND_PlayZoneAmbiance(name, loop, playing->volume);
+				break;
+			}
+			default: LogWarning << "Unknown ambiance type " << playing->type << " for " << name;
+		}
+		ambiances -= sizeof(SavedPlayingAmbiance);
+		pos += sizeof(SavedPlayingAmbiance);
+	}
+	if(ambiances) {
+		LogWarning << "Unexpected ambiance data";
+		pos += ambiances;
 	}
 	
 	ARX_UNUSED(pos);
@@ -1364,7 +1397,7 @@ static void ARX_CHANGELEVEL_Pop_Zones_n_Lights(const std::string & buffer) {
 		const ARX_CHANGELEVEL_PATH * acp = reinterpret_cast<const ARX_CHANGELEVEL_PATH *>(dat + pos);
 		pos += sizeof(ARX_CHANGELEVEL_PATH);
 		
-		ARX_PATH * ap = ARX_PATH_GetAddressByName(boost::to_lower_copy(util::loadString(acp->name)));
+		Zone * ap = getZoneByName(boost::to_lower_copy(util::loadString(acp->name)));
 		
 		if(ap) {
 			ap->controled = boost::to_lower_copy(util::loadString(acp->controled));
@@ -1519,7 +1552,7 @@ static long ARX_CHANGELEVEL_Pop_Player(const std::string & target, float angle) 
 	player.falling = (asp->falling != 0);
 	player.gold = asp->gold;
 	entities.player()->invisibility = asp->invisibility;
-	player.inzone = ARX_PATH_GetAddressByName(boost::to_lower_copy(util::loadString(asp->inzone)));
+	entities.player()->inzone = getZoneByName(boost::to_lower_copy(util::loadString(asp->inzone)));
 	player.jumpphase = JumpPhase(asp->jumpphase); // TODO save/load enum
 	PlatformInstant jumpstart = g_platformTime.frameStart()
 	                            + PlatformDurationUs(toUs(GameInstantMs(asp->jumpstarttime) - g_gameTime.now()));
@@ -1584,7 +1617,7 @@ static long ARX_CHANGELEVEL_Pop_Player(const std::string & target, float angle) 
 	player.m_skill.closeCombat = asp->Skill_Close_Combat;
 	player.m_skill.defense = asp->Skill_Defense;
 	
-	player.skin = checked_range_cast<char>(asp->skin);
+	player.skin = checked_range_cast<unsigned char>(asp->skin);
 	
 	player.xp = asp->xp;
 	GLOBAL_MAGIC_MODE = (asp->Global_Magic_Mode != 0);
@@ -1611,8 +1644,14 @@ static long ARX_CHANGELEVEL_Pop_Player(const std::string & target, float angle) 
 	for(size_t bag = 0; bag < SAVED_INVENTORY_BAGS; bag++)
 	for(size_t y = 0; y < SAVED_INVENTORY_Y; y++)
 	for(size_t x = 0; x < SAVED_INVENTORY_X; x++) {
-		g_inventory[bag][x][y].io = ConvertToValidIO(asp->id_inventory[bag][x][y]);
-		g_inventory[bag][x][y].show = asp->inventory_show[bag][x][y] != 0;
+		Entity * item = ConvertToValidIO(asp->id_inventory[bag][x][y]);
+		if(!item || locateInInventories(item).io == EntityHandle_Player) {
+			continue;
+		}
+		if(!insertIntoInventoryAtNoEvent(item, InventoryPos(EntityHandle_Player, bag, x, y))) {
+			LogWarning << "Could not load item " << item->idString() << " into player inventory";
+			PutInFrontOfPlayer(item);
+		}
 	}
 	
 	if(buffer.size() < pos + (asp->nb_PlayerQuest * SAVED_QUEST_SLOT_SIZE)) {
@@ -1850,10 +1889,9 @@ static Entity * ARX_CHANGELEVEL_Pop_IO(const std::string & idString, EntityInsta
 			ARX_USE_PATH * aup = io->usepath = new ARX_USE_PATH;
 			aup->aupflags = UsePathFlags::load(ais->usepath_aupflags); // TODO save/load flags
 			aup->_curtime = GameInstantMs(ais->usepath_curtime); // TODO save/load time
-			aup->initpos = ais->usepath_initpos.toVec3();
 			aup->lastWP = ais->usepath_lastWP;
 			aup->_starttime = GameInstantMs(ais->usepath_starttime); // TODO save/load time
-			aup->path = ARX_PATH_GetAddressByName(boost::to_lower_copy(util::loadString(ais->usepath_name)));
+			aup->path = getPathByName(boost::to_lower_copy(util::loadString(ais->usepath_name)));
 		}
 		
 		io->shop_category = boost::to_lower_copy(util::loadString(ais->shop_category));
@@ -2138,20 +2176,19 @@ static Entity * ARX_CHANGELEVEL_Pop_IO(const std::string & idString, EntityInsta
 			io->inventory = new INVENTORY_DATA();
 			
 			INVENTORY_DATA * inv = io->inventory;
-			inv->io = ConvertToValidIO(aids->io);
+			inv->io = io;
 			
 			inv->m_size = Vec2s(3, 11);
-			if(aids->sizex != 3 || aids->sizey != 11) {
-				for(long x = 0; x < inv->m_size.x; x++)
-				for(long y = 0; y < inv->m_size.y; y++) {
-					inv->slot[x][y].io = NULL;
-					inv->slot[x][y].show = false;
+			
+			for(long x = 0; x < aids->sizex; x++)
+			for(long y = 0; y < aids->sizey; y++) {
+				Entity * item = ConvertToValidIO(aids->slot_io[x][y]);
+				if(!item || locateInInventories(item).io == io->index()) {
+					continue;
 				}
-			} else {
-				for(long x = 0; x < inv->m_size.x; x++)
-				for(long y = 0; y < inv->m_size.y; y++) {
-					inv->slot[x][y].io = ConvertToValidIO(aids->slot_io[x][y]);
-					inv->slot[x][y].show = aids->slot_show[x][y] != 0;
+				if(!insertIntoInventoryAtNoEvent(item, InventoryPos(io->index(), 0, x, y))) {
+					LogWarning << "Could not load item " << item->idString() << " into inventory of " << io->idString();
+					PutInFrontOfPlayer(item);
 				}
 			}
 			
@@ -2564,11 +2601,6 @@ bool ARX_CHANGELEVEL_Save(const std::string & name, const fs::path & savefile) {
 
 static bool ARX_CHANGELEVEL_Get_Player_LevelData(ARX_CHANGELEVEL_PLAYER_LEVEL_DATA & pld,
                                                  const fs::path & savefile) {
-	
-	// Checks For Directory
-	if(!fs::is_regular_file(savefile)) {
-		return false;
-	}
 	
 	std::string buffer = SaveBlock::load(savefile, "pld");
 	if(buffer.size() < sizeof(ARX_CHANGELEVEL_PLAYER_LEVEL_DATA)) {

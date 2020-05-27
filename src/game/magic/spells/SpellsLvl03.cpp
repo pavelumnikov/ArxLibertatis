@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2014-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -82,13 +82,13 @@ void SpeedSpell::Launch() {
 			continue;
 		}
 		
-		float col = Random::getf(0.05f, 0.1f);
+		float col = Random::getf(0.1f, 0.2f);
 		float size = Random::getf(1.f, 1.5f);
 		int taille = Random::get(130, 260);
 		
 		SpeedTrail trail;
 		trail.vertexIndex = itr->origin;
-		trail.trail = new Trail(taille, Color4f::gray(col), Color4f::black, size, 0.f);
+		trail.trail = new Trail(taille, Color3f::gray(col), Color3f::black, size, 0.f);
 		
 		m_trails.push_back(trail);
 	}
@@ -131,7 +131,7 @@ void SpeedSpell::Update() {
 	}
 }
 
-Vec3f SpeedSpell::getPosition() {
+Vec3f SpeedSpell::getPosition() const {
 	return getTargetPosition();
 }
 
@@ -323,7 +323,7 @@ void FireballSpell::Update() {
 	ARX_SOUND_RefreshPosition(m_snd_loop, eCurPos);
 }
 
-Vec3f FireballSpell::getPosition() {
+Vec3f FireballSpell::getPosition() const {
 	return eCurPos;
 }
 

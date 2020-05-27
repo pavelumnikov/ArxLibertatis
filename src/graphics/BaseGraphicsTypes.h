@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -107,7 +107,7 @@ struct EERIE_2D_BBOX {
 		return (min.x <= max.x && min.y <= max.y);
 	}
 	
-	Rectf toRect() {
+	Rectf toRect() const {
 		return Rectf(min.x, min.y, max.x, max.y);
 	}
 	

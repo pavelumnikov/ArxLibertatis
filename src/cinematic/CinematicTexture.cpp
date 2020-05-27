@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -312,7 +312,7 @@ void CinematicGrid::ReajustUV() {
 	}
 }
 
-void CinematicGrid::GetIndNumCube(int cx, int cy, int * i1, int * i2, int * i3, int * i4) {
+void CinematicGrid::GetIndNumCube(int cx, int cy, int * i1, int * i2, int * i3, int * i4) const {
 	*i1 = cy * (m_count.x + 1) + cx;
 	*i2 = *i1 + 1;
 	*i3 = *i1 + (m_count.x + 1);

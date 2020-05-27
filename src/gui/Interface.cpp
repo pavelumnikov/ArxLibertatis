@@ -517,7 +517,7 @@ static ScriptResult combineEntities(Entity * source, Entity * target, bool peekO
 	return SendIOScriptEvent(source, target, SM_COMBINE, parameters);
 }
 
-static void updateCombineFlagForEntity(Entity * source, Entity * target) {
+void updateCombineFlagForEntity(Entity * source, Entity * target) {
 	
 	if(!target) {
 		return;
@@ -532,23 +532,8 @@ static void updateCombineFlagForEntity(Entity * source, Entity * target) {
 }
 
 static void updateCombineFlags(Entity * source) {
-	
-	arx_assert(player.m_bags >= 0);
-	arx_assert(player.m_bags <= 3);
-	
-	for(size_t bag = 0; bag < size_t(player.m_bags); bag++)
-	for(size_t y = 0; y < INVENTORY_Y; y++)
-	for(size_t x = 0; x < INVENTORY_X; x++) {
-		updateCombineFlagForEntity(source, g_inventory[bag][x][y].io);
-	}
-	
-	if(SecondaryInventory) {
-		for(long y = 0; y < SecondaryInventory->m_size.y; y++)
-		for(long x = 0; x < SecondaryInventory->m_size.x; x++) {
-			updateCombineFlagForEntity(source, SecondaryInventory->slot[x][y].io);
-		}
-	}
-	
+	g_playerInventoryHud.updateCombineFlags(source);
+	g_secondaryInventoryHud.updateCombineFlags(source);
 }
 
 static bool isPlayerLookingAtEnemy() {
@@ -667,6 +652,7 @@ void ArxGame::managePlayerControls() {
 	ARX_PROFILE_FUNC();
 	
 	if(eeMouseDoubleClick1() && !(player.Interface & INTER_COMBATMODE) && !player.doingmagic
+	   && !g_secondaryInventoryHud.containsPos(DANAEMouse) && !g_playerInventoryHud.containsPos(DANAEMouse)
 	   && !g_cursorOverBook && eMouseState != MOUSE_IN_NOTE) {
 		
 		Entity * t = InterClick(DANAEMouse);
@@ -685,13 +671,16 @@ void ArxGame::managePlayerControls() {
 								player.Interface &= ~INTER_STEAL;
 							}
 							
-							ARX_INVENTORY_OpenClose(t);
+							g_secondaryInventoryHud.open(t);
 							
-							if(player.Interface & (INTER_INVENTORY | INTER_INVENTORYALL)) {
+							if(player.Interface & INTER_INVENTORYALL) {
+								ARX_SOUND_PlayInterface(g_snd.BACKPACK, Random::getf(0.9f, 1.1f));
+								g_playerInventoryHud.close();
+							} else if(player.Interface & INTER_INVENTORY) {
 								ARX_SOUND_PlayInterface(g_snd.BACKPACK, Random::getf(0.9f, 1.1f));
 							}
 							
-							if(SecondaryInventory) {
+							if(g_secondaryInventoryHud.isOpen()) {
 								bForceEscapeFreeLook = true;
 								lOldTruePlayerMouseLook = !TRUE_PLAYER_MOUSELOOK_ON;
 							}
@@ -709,9 +698,14 @@ void ArxGame::managePlayerControls() {
 						}
 					}
 					
-					ARX_INVENTORY_OpenClose(t);
+					g_secondaryInventoryHud.open(t);
 					
-					if(SecondaryInventory) {
+					if(player.Interface & INTER_INVENTORYALL) {
+						ARX_SOUND_PlayInterface(g_snd.BACKPACK, Random::getf(0.9f, 1.1f));
+						g_playerInventoryHud.close();
+					}
+					
+					if(g_secondaryInventoryHud.isOpen()) {
 						bForceEscapeFreeLook = true;
 						lOldTruePlayerMouseLook = !TRUE_PLAYER_MOUSELOOK_ON;
 					}
@@ -946,36 +940,22 @@ void ArxGame::managePlayerControls() {
 	}
 
 	if(GInput->actionNowPressed(CONTROLS_CUST_DRINKPOTIONLIFE)) {
-		SendInventoryObjectCommand("graph/obj3d/textures/item_potion_life", SM_INVENTORYUSE);
+		useInventoryItemWithLowestDurability("potion_life");
 	}
 
 	if(GInput->actionNowPressed(CONTROLS_CUST_DRINKPOTIONMANA)) {
-		SendInventoryObjectCommand("graph/obj3d/textures/item_potion_mana", SM_INVENTORYUSE);
+		useInventoryItemWithLowestDurability("potion_mana");
 	}
 
 	if(GInput->actionNowPressed(CONTROLS_CUST_DRINKPOTIONCURE)) {
-		SendInventoryObjectCommand("graph/obj3d/textures/item_potion_purple", SM_INVENTORYUSE);
+		useInventoryItemWithLowestDurability("potion_purple");
 	}
 
 	if(GInput->actionNowPressed(CONTROLS_CUST_TORCH)) {
 		if(player.torch) {
 			ARX_PLAYER_KillTorch();
 		} else {
-			Entity * io = ARX_INVENTORY_GetTorchLowestDurability();
-
-			if(io) {
-				Entity * ioo = io;
-				
-				if(io->_itemdata->count > 1) {
-					ioo = CloneIOItem(io);
-					ioo->show = SHOW_FLAG_NOT_DRAWN;
-					ioo->scriptload = 1;
-					ioo->_itemdata->count = 1;
-					io->_itemdata->count--;
-				}
-				
-				ARX_PLAYER_ClickedOnTorch(ioo);
-			}
+			useInventoryItemWithLowestDurability("torch");
 		}
 	}
 
@@ -1157,7 +1137,8 @@ void ArxGame::managePlayerControls() {
 	   && !cursorIsSpecial()
 	   && PLAYER_MOUSELOOK_ON
 	   && !DRAGINTER
-	   && !InInventoryPos(DANAEMouse)
+	   && !g_secondaryInventoryHud.containsPos(DANAEMouse)
+	   && !g_playerInventoryHud.containsPos(DANAEMouse)
 	   && (config.input.autoReadyWeapon == AlwaysAutoReadyWeapon
 	       || (config.input.autoReadyWeapon == AutoReadyWeaponNearEnemies && isPlayerLookingAtEnemy()))) {
 		if(eeMouseDown1()) {
@@ -1329,14 +1310,12 @@ void ArxGame::manageKeyMouse() {
 					COMBINE = NULL;
 
 					if(DRAGINTER == NULL) {
+						
 						bool bOk = true;
-
-						if(SecondaryInventory != NULL) {
-							Entity * temp = SecondaryInventory->io;
-
-							if(IsInSecondaryInventory(FlyingOverIO))
-								if(temp->ioflags & IO_SHOP)
-									bOk = false;
+						Entity * container = entities.get(locateInInventories(FlyingOverIO).io);
+						if(container && (container->ioflags & IO_SHOP)) {
+							// Canot use items in shop inventories
+							bOk = false;
 						}
 						
 						Entity * io = entities.player();
@@ -1445,8 +1424,6 @@ void ArxGame::manageKeyMouse() {
 	
 	// Player/Eyeball Freelook Management
 	if(!BLOCK_PLAYER_CONTROLS) {
-		
-		GetInventoryObj_INVENTORYUSE(DANAEMouse);
 		
 		bool bKeySpecialMove = false;
 		
@@ -1769,13 +1746,14 @@ void ArxGame::manageEditorControls() {
 	   && FlyingOverIO
 	   && !DRAGINTER
 	) {
-		SendIOScriptEvent(entities.player(), FlyingOverIO, SM_CLICKED);
-		bool bOk = true;
 		
-		if(SecondaryInventory) {
-			if(IsInSecondaryInventory(FlyingOverIO) && (SecondaryInventory->io->ioflags & IO_SHOP)) {
-				bOk = false;
-			}
+		SendIOScriptEvent(entities.player(), FlyingOverIO, SM_CLICKED);
+		
+		bool bOk = true;
+		Entity * container = entities.get(locateInInventories(FlyingOverIO).io);
+		if(container && (container->ioflags & IO_SHOP)) {
+			// Canot shift click items in shop inventories
+			bOk = false;
 		}
 		
 		if(   !(FlyingOverIO->ioflags & IO_MOVABLE)
@@ -1785,51 +1763,15 @@ void ArxGame::manageEditorControls() {
 		   && !g_playerInventoryHud.containsPos(DANAEMouse)
 		   && !ARX_INTERFACE_MouseInBook()
 		) {
-			Vec2s s(0);
-			bool bSecondary = false;
 			
-			if(TSecondaryInventory && IsInSecondaryInventory(FlyingOverIO)) {
-				if(SecondaryInventory) {
-					bool bfound = true;
-					
-					for(long y = 0; y < SecondaryInventory->m_size.y && bfound; y++)
-					for(long x = 0; x < SecondaryInventory->m_size.x && bfound; x++) {
-						const INVENTORY_SLOT & slot = SecondaryInventory->slot[x][y];
-						
-						if(slot.io == FlyingOverIO) {
-							s = Vec2s(x, y);
-							bfound = false;
-						}
-					}
-					
-					if(bfound)
-						arx_unreachable();
-				}
-				
-				bSecondary = true;
-			}
-			
-			RemoveFromAllInventories(FlyingOverIO);
-			FlyingOverIO->show = SHOW_FLAG_IN_INVENTORY;
-			
-			if(FlyingOverIO->ioflags & IO_GOLD)
+			if(FlyingOverIO->ioflags & IO_GOLD) {
 				ARX_SOUND_PlayInterface(g_snd.GOLD);
+			}
 			
 			ARX_SOUND_PlayInterface(g_snd.INVSTD);
 			
-			if(!playerInventory.insert(FlyingOverIO)) {
-				if(TSecondaryInventory && bSecondary) {
-					// TODO global sInventory
-					extern short sInventory;
-					extern Vec2s sInventoryPos;
-					sInventory = 2;
-					sInventoryPos = s;
-					
-					CanBePutInSecondaryInventory(TSecondaryInventory, FlyingOverIO);
-				}
-				
-				if(!bSecondary)
-					FlyingOverIO->show = SHOW_FLAG_IN_SCENE;
+			if(!insertIntoInventory(FlyingOverIO, entities.player())) {
+				// If there is no space, leave the item where it is
 			}
 			
 			if(DRAGINTER == FlyingOverIO)
@@ -1842,8 +1784,10 @@ void ArxGame::manageEditorControls() {
 	if(!(player.Interface & INTER_COMBATMODE)) {
 		// Dropping an Interactive Object that has been dragged
 		if(eeMouseUp1() && DRAGINTER) {
-			if(InInventoryPos(DANAEMouse)) {// Attempts to put it in inventory
-				PutInInventory();
+			if(g_secondaryInventoryHud.containsPos(DANAEMouse)) {
+				g_secondaryInventoryHud.dropEntity();
+			} else if(g_playerInventoryHud.containsPos(DANAEMouse)) {
+				g_playerInventoryHud.dropEntity();
 			} else if(ARX_INTERFACE_MouseInBook()) {
 				if(g_playerBook.currentPage() == BOOKMODE_STATS) {
 					SendIOScriptEvent(entities.player(), DRAGINTER, SM_INVENTORYUSE);
@@ -1851,13 +1795,11 @@ void ArxGame::manageEditorControls() {
 				}
 			} else if(DRAGINTER->ioflags & IO_GOLD) {
 				ARX_PLAYER_AddGold(DRAGINTER);
-				Set_DragInter(NULL);
-			} else if(DRAGINTER) {
+			} else {
 				
 				if(   !((DRAGINTER->ioflags & IO_ITEM) && DRAGINTER->_itemdata->count > 1)
 				   && DRAGINTER->obj
 				   && DRAGINTER->obj->pbox
-				   && !InInventoryPos(DANAEMouse)
 				   && !g_cursorOverBook
 				) {
 					// Put object in fromt of player
@@ -1883,6 +1825,7 @@ void ArxGame::manageEditorControls() {
 						EERIE_PHYSICS_BOX_Launch(io->obj, io->pos, io->angle, viewvector);
 						ARX_SOUND_PlaySFX(g_snd.WHOOSH, &io->pos);
 						
+						arx_assert(!locateInInventories(io));
 						io->show = SHOW_FLAG_IN_SCENE;
 						Set_DragInter(NULL);
 					}
@@ -1972,22 +1915,20 @@ void ArxGame::manageEditorControls() {
 		}
 
 		// Double Clicked and not already combining.
-		if(eeMouseDoubleClick1() && !COMBINE) {
+		if(eeMouseDoubleClick1() && !COMBINE && FlyingOverIO && (FlyingOverIO->ioflags & IO_ITEM)) {
+			
 			bool accept_combine = true;
-			
-			if(SecondaryInventory && g_secondaryInventoryHud.containsPos(DANAEMouse)) {
-				Entity * io = SecondaryInventory->io;
-				
-				if(io->ioflags & IO_SHOP)
-					accept_combine = false;
+			Entity * container = entities.get(locateInInventories(FlyingOverIO).io);
+			if(container && (container->ioflags & IO_SHOP)) {
+				// Canot combine items in shop inventories
+				accept_combine = false;
 			}
 			
-			if(accept_combine) {
-				if(FlyingOverIO && ((FlyingOverIO->ioflags & IO_ITEM) && !(FlyingOverIO->ioflags & IO_MOVABLE))) {
-					COMBINE = FlyingOverIO;
-					updateCombineFlags(COMBINE);
-				}
+			if(accept_combine && !(FlyingOverIO->ioflags & IO_MOVABLE)) {
+				COMBINE = FlyingOverIO;
+				updateCombineFlags(COMBINE);
 			}
+			
 		}
 		
 		// Checks for Object Dragging
@@ -1996,52 +1937,46 @@ void ArxGame::manageEditorControls() {
 		   && !GInput->actionPressed(CONTROLS_CUST_MAGICMODE)
 		   && !DRAGINTER
 		) {
-			if(!TakeFromInventory(g_dragStartPos)) {
-				
-				bool bOk = false;
+			if(g_secondaryInventoryHud.containsPos(g_dragStartPos)) {
+				Entity * item = g_secondaryInventoryHud.getObj(g_dragStartPos);
+				if(item) {
+					g_secondaryInventoryHud.dragEntity(item);
+					ARX_PLAYER_Remove_Invisibility();
+				}
+			} else if(g_playerInventoryHud.containsPos(g_dragStartPos)) {
+				Entity * item = g_playerInventoryHud.getObj(g_dragStartPos);
+				if(item) {
+					g_playerInventoryHud.dragEntity(item);
+					ARX_PLAYER_Remove_Invisibility();
+				}
+			} else if(!BLOCK_PLAYER_CONTROLS) {
 				
 				Entity * io = InterClick(g_dragStartPos);
-				if(io && !BLOCK_PLAYER_CONTROLS) {
-					if(g_cursorOverBook) {
-						if(io->show == SHOW_FLAG_ON_PLAYER)
-							bOk = true;
-					} else {
-						bOk = true;
+				if(io && (!g_cursorOverBook || io->show == SHOW_FLAG_ON_PLAYER)) {
+					
+					if(io->show == SHOW_FLAG_ON_PLAYER) {
+						ARX_EQUIPMENT_UnEquip(entities.player(), io);
+						io->bbox2D.max.x = -1;
 					}
-				}
-				
-				if(bOk) {
 					
 					Set_DragInter(io);
 					
-					if(io) {
-						
-						ARX_PLAYER_Remove_Invisibility();
-						
-						if(DRAGINTER->show == SHOW_FLAG_ON_PLAYER) {
-							ARX_EQUIPMENT_UnEquip(entities.player(), DRAGINTER);
-							RemoveFromAllInventories(DRAGINTER);
-							DRAGINTER->bbox2D.max.x = -1;
+					ARX_PLAYER_Remove_Invisibility();
+					
+					if((io->ioflags & IO_NPC) || (io->ioflags & IO_FIX)) {
+						Set_DragInter(NULL);
+					} else {
+						if(io->ioflags & IO_UNDERWATER) {
+							io->ioflags &= ~IO_UNDERWATER;
+							ARX_SOUND_PlayInterface(g_snd.PLOUF, Random::getf(0.8f, 1.2f));
 						}
-						
-						if((io->ioflags & IO_NPC) || (io->ioflags & IO_FIX)) {
-							Set_DragInter(NULL);
-						} else {
-							if(io->ioflags & IO_UNDERWATER) {
-								io->ioflags &= ~IO_UNDERWATER;
-								ARX_SOUND_PlayInterface(g_snd.PLOUF, Random::getf(0.8f, 1.2f));
-							}
-							DRAGINTER->show = SHOW_FLAG_NOT_DRAWN;
-							ARX_SOUND_PlayInterface(g_snd.INVSTD);
-						}
-						
+						arx_assert(!locateInInventories(DRAGINTER));
+						DRAGINTER->show = SHOW_FLAG_NOT_DRAWN;
+						ARX_SOUND_PlayInterface(g_snd.INVSTD);
 					}
 					
-				} else {
-					Set_DragInter(NULL);
 				}
-			} else {
-				ARX_PLAYER_Remove_Invisibility();
+				
 			}
 		}
 	

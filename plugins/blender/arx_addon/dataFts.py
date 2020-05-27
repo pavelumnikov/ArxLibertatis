@@ -1,4 +1,4 @@
-# Copyright 2014-2017 Arx Libertatis Team (see the AUTHORS file)
+# Copyright 2014-2020 Arx Libertatis Team (see the AUTHORS file)
 #
 # This file is part of Arx Libertatis.
 #
@@ -17,7 +17,6 @@
 
 from ctypes import (
     LittleEndianStructure,
-    Union,
     c_char,
     c_uint32,
     c_int16,
@@ -217,13 +216,13 @@ class FtsSerializer(object):
 
                 try:
                     if cellHeader.nbpoly <= 0:
-                        cells[x][z] = None
+                        cells[z][x] = None
                     else:
                         polysType = FAST_EERIEPOLY * cellHeader.nbpoly
                         polys = polysType.from_buffer_copy(data, pos)
                         pos += sizeof(polysType)
 
-                        cells[x][z] = polys
+                        cells[z][x] = polys
                 except ValueError as e:
                     print("Failed reading cell data, x:%i z:%i polys:%i" % (x, z, cellHeader.nbpoly))
                     raise e

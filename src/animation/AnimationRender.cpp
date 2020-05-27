@@ -491,19 +491,16 @@ static void Cedric_ApplyLighting(ShaderLight lights[], size_t lightsCount, EERIE
 	
 	/* Apply light on all vertices */
 	for(size_t i = 0; i != obj->bones.size(); i++) {
-
 		const glm::quat & quat = obj->bones[i].anim.quat;
-
 		/* Get light value for each vertex */
 		for(size_t v = 0; v != obj->bones[i].idxvertices.size(); v++) {
 			size_t vertexIndex = obj->bones[i].idxvertices[v];
-
 			Vec3f & position = eobj->vertexWorldPositions[vertexIndex].v;
-			Vec3f & normal = eobj->vertexlist[vertexIndex].norm;
-
-			eobj->vertexColors[vertexIndex] = ApplyLight(lights, lightsCount, quat, position, normal, colorMod);
+			Vec3f normal = quat * eobj->vertexlist[vertexIndex].norm;
+			eobj->vertexColors[vertexIndex] = ApplyLight(lights, lightsCount, position, normal, colorMod);
 		}
 	}
+	
 }
 
 static EERIE_3D_BBOX UpdateBbox3d(EERIE_3DOBJ * eobj) {
@@ -544,16 +541,9 @@ void DrawEERIEInter_ModelTransform(EERIE_3DOBJ * eobj, const TransformInfo & t) 
 	arx_assert(eobj->vertexWorldPositions.size() == eobj->vertexlist.size());
 	
 	for(size_t i = 0 ; i < eobj->vertexlist.size(); i++) {
-
-		Vec3f temp = eobj->vertexlist[i].v;
-
-		temp -= t.offset;
-		temp *= t.scale;
-		temp = t.rotation * temp;
-		temp += t.pos;
-
-		eobj->vertexWorldPositions[i].v = temp;
+		eobj->vertexWorldPositions[i].v = t(eobj->vertexlist[i].v);
 	}
+	
 }
 
 void DrawEERIEInter_ViewProjectTransform(EERIE_3DOBJ * eobj) {
@@ -715,18 +705,12 @@ void DrawEERIEInter_Render(EERIE_3DOBJ * eobj, const TransformInfo & t, Entity *
 		TexturedVertex * tvList = GetNewVertexList(pTex->m_modelBatch, face, invisibility, fTransp);
 		
 		for(size_t n = 0; n < 3; n++) {
-
-			if(useFaceNormal) {
-				const Vec3f & position = eobj->vertexWorldPositions[face.vid[n]].v;
-				const Vec3f & normal = face.norm;
-
-				eobj->vertexColors[face.vid[n]] = ApplyLight(lights, lightsCount, t.rotation, position, normal, colorMod, 0.5f);
-			} else {
-				Vec3f & position = eobj->vertexWorldPositions[face.vid[n]].v;
-				Vec3f & normal = eobj->vertexlist[face.vid[n]].norm;
-
-				eobj->vertexColors[face.vid[n]] = ApplyLight(lights, lightsCount, t.rotation, position, normal, colorMod);
-			}
+			
+			const Vec3f & position = eobj->vertexWorldPositions[face.vid[n]].v;
+			Vec3f normal = t.rotation * (useFaceNormal ? face.norm : eobj->vertexlist[face.vid[n]].norm);
+			float diffuse = useFaceNormal? 0.5f : 1.f;
+			
+			eobj->vertexColors[face.vid[n]] = ApplyLight(lights, lightsCount, position, normal, colorMod, diffuse);
 			
 			tvList[n].p = Vec3f(eobj->vertexClipPositions[face.vid[n]]);
 			tvList[n].w = eobj->vertexClipPositions[face.vid[n]].w;
@@ -1139,11 +1123,10 @@ static void Cedric_AnimateDrawEntityRender(EERIE_3DOBJ * eobj, const Vec3f & pos
 			continue;
 		}
 		
-		TransformInfo t(
-			actionPointPosition(eobj, link.lidx),
-			eobj->m_skeleton->bones[link.lgroup.handleData()].anim.quat,
-			link.io ? link.io->scale : 1.f,
-			link.obj->vertexlist[link.lidx2.handleData()].v - link.obj->vertexlist[link.obj->origin].v);
+		TransformInfo t(actionPointPosition(eobj, link.lidx),
+		                eobj->m_skeleton->bones[link.lgroup.handleData()].anim.quat,
+		                link.io ? link.io->scale : 1.f);
+		t.pos = t(link.obj->vertexlist[link.obj->origin].v - link.obj->vertexlist[link.lidx2.handleData()].v);
 		
 		DrawEERIEInter(link.obj, t, link.io, true, invisibility);
 	}
@@ -1155,7 +1138,7 @@ static Vec3f CalcTranslation(AnimLayer & layer) {
 		return Vec3f(0.f);
 	}
 	
-	EERIE_ANIM * eanim = layer.currentAltAnim();
+	const EERIE_ANIM * eanim = layer.currentAltAnim();
 	if(!eanim) {
 		return Vec3f(0.f);
 	}
@@ -1237,7 +1220,7 @@ static void Cedric_AnimateObject(Skeleton * obj, AnimLayer * animlayer) {
 			continue;
 		}
 		
-		EERIE_ANIM * eanim = layer.currentAltAnim();
+		const EERIE_ANIM * eanim = layer.currentAltAnim();
 		if(!eanim) {
 			continue;
 		}
@@ -1318,37 +1301,39 @@ static void Cedric_BlendAnimation(Skeleton & rig, AnimationBlendStatus * animBle
  * Apply transformations on all bones
  */
 static void Cedric_ConcatenateTM(Skeleton & rig, const TransformInfo & t) {
-
+	
 	for(size_t i = 0; i != rig.bones.size(); i++) {
 		Bone & bone = rig.bones[i];
-
-		if(bone.father >= 0) { // Child Bones
+		
+		if(bone.father >= 0) { // Child bones
+			
 			size_t parentIndex = size_t(bone.father);
 			Bone & parent = rig.bones[parentIndex];
 			// Rotation
 			bone.anim.quat = parent.anim.quat * bone.init.quat;
-
+			
 			// Translation
 			bone.anim.trans = bone.init.trans * parent.anim.scale;
 			bone.anim.trans = parent.anim.quat * bone.anim.trans;
 			bone.anim.trans = parent.anim.trans + bone.anim.trans;
-
+			
 			// Scale
 			bone.anim.scale = (bone.init.scale + Vec3f(1.f)) * parent.anim.scale;
-		} else { // Root Bone
+			
+		} else { // Root bone
+			
 			// Rotation
 			bone.anim.quat = t.rotation * bone.init.quat;
-
+			
 			// Translation
-			Vec3f vt1 = bone.init.trans + t.offset;
-			bone.anim.trans = t.rotation * vt1;
-			bone.anim.trans *= t.scale;
-			bone.anim.trans += t.pos;
-
+			bone.anim.trans = t(bone.init.trans);
+			
 			// Compute Global Object Scale AND Global Animation Scale
 			bone.anim.scale = (bone.init.scale + Vec3f(1.f)) * t.scale;
+			
 		}
 	}
+	
 }
 
 /*!
@@ -1358,11 +1343,11 @@ static void Cedric_TransformVerts(EERIE_3DOBJ * eobj) {
 	
 	arx_assert(eobj->vertexWorldPositions.size() == eobj->vertexlist.size());
 	
-	Skeleton & rig = *eobj->m_skeleton;
+	const Skeleton & rig = *eobj->m_skeleton;
 
 	// Transform & project all vertices
 	for(size_t i = 0; i != rig.bones.size(); i++) {
-		Bone & bone = rig.bones[i];
+		const Bone & bone = rig.bones[i];
 
 		glm::mat4x4 matrix = glm::mat4_cast(bone.anim.quat);
 		
@@ -1509,7 +1494,8 @@ void EERIEDrawAnimQuatUpdate(EERIE_3DOBJ * eobj,
 	}
 	
 	// Build skeleton in Object Space
-	TransformInfo t(pos, rotation, scale, ftr);
+	TransformInfo t(pos, rotation, scale);
+	t.pos = t(ftr);
 	Cedric_ConcatenateTM(skeleton, t);
 
 	Cedric_TransformVerts(eobj);

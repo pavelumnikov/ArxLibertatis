@@ -64,7 +64,11 @@ option(USE_OPENAL "Build the OpenAL audio backend" ON)
 option(USE_OPENGL "Build the OpenGL renderer backend" ON)
 option(USE_WINHTTP "Use the native WinHTTP API instead of CURL on Windows" ON)
 option(USE_NATIVE_FS "Use the native filesystem backend directly instead of boost" ON)
-option(USE_X11 "Check for X11 support in used libraries" OFF)
+set(default_USE_X11 OFF)
+if(NOT WIN32 AND NOT MACOS)
+	set(default_USE_X11 ON)
+endif()
+suboption(USE_X11 "Check for X11 support in used libraries" BOOL ${default_USE_X11})
 option(USE_WAYLAND "Check for Wayland support in used libraries" OFF)
 
 # Alternative dependencies
@@ -140,6 +144,16 @@ if(STRICT_USE)
 else()
 	set(OPTIONAL_DEPENDENCY)
 endif()
+
+# Test configuration
+suboption(CppUnit_USE_STATIC_LIBS "Statically link CppUnit" BOOL ${USE_STATIC_LIBS})
+set(RUN_TARGET CACHE STRING "Wrapper to run built targets")
+mark_as_advanced(RUN_TARGET)
+set(default_RUN_TESTS OFF)
+if((DEVELOPER OR CONTINUOUS_INTEGRATION) AND (NOT CMAKE_CROSSCOMPILING OR NOT RUN_TARGET STREQUAL ""))
+	set(default_RUN_TESTS ON)
+endif()
+suboption(RUN_TESTS "Run tests as part of the default build target" BOOL ${default_RUN_TESTS})
 
 # Install destinations
 if(CMAKE_VERSION VERSION_LESS 2.8.5)
@@ -491,6 +505,10 @@ endif()
 find_package(Boost 1.48 REQUIRED)
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 add_definitions(-DBOOST_ALL_NO_LIB)
+if(WIN32)
+	# Newer MSVC 2019 versions don't like Boost's redeclaration of Winapi functions in a private namespace
+	add_definitions(-DBOOST_USE_WINDOWS_H)
+endif()
 # We compile with -fno-rtti and boost is not able to detect that for all compilers.
 add_definitions(-DBOOST_NO_RTTI -DBOOST_NO_TYPEID)
 if(NOT Boost_VERSION_MACRO)
@@ -580,6 +598,7 @@ if(ARX_HAVE_SDL AND ARX_HAVE_OPENGL AND NOT WIN32 AND NOT APPLE)
 	endif()
 	check_symbol_exists(SDL_VIDEO_DRIVER_X11 "SDL_config.h" SDL_HAVE_VIDEO_X11)
 	check_symbol_exists(SDL_VIDEO_DRIVER_WAYLAND "SDL_config.h" SDL_HAVE_VIDEO_WAYLAND)
+	check_symbol_exists(SDL_HINT_VIDEO_X11_FORCE_EGL "SDL_hints.h" SDL_HAVE_VIDEO_X11_EGL)
 	if(EPOXY_FOUND)
 		set(CMAKE_REQUIRED_INCLUDES ${Epoxy_INCLUDE_DIR})
 	else()
@@ -858,6 +877,9 @@ else(MSVC)
 		check_symbol_exists(dirfd "dirent.h" ARX_HAVE_DIRFD)
 		if(ARX_HAVE_DIRFD)
 			check_symbol_exists(fstatat "sys/stat.h" ARX_HAVE_FSTATAT)
+			if(ARX_HAVE_FSTATAT)
+				check_symbol_exists(AT_SYMLINK_NOFOLLOW "fcntl.h" ARX_HAVE_AT_SYMLINK_NOFOLLOW)
+			endif()
 		endif()
 		
 		# readdir_r is complicated to use and is deprecated in glibc 2.24
@@ -1247,8 +1269,9 @@ set(WINDOW_SOURCES
 )
 set(WINDOW_SDL1_SOURCES src/window/SDL1Window.cpp)
 set(WINDOW_SDL2_SOURCES src/window/SDL2Window.cpp)
-if(NOT WIN32 AND NOT MACOS)
+if(USE_X11 AND SDL_HAVE_VIDEO_X11)
 	list(APPEND WINDOW_SDL2_SOURCES src/window/SDL2X11Util.c)
+	set(ARX_HAVE_SDL2_X11 1)
 endif()
 
 # TODO manually specify theese like we do for the tools
@@ -1503,7 +1526,6 @@ set(BASE_SOURCES
 	${IO_FILESYSTEM_SOURCES}
 	${IO_LOGGER_SOURCES}
 	${UTIL_SOURCES}
-	${VERSION_FILE}
 )
 
 if(ARX_HAVE_CRASHREPORTER)
@@ -1529,6 +1551,7 @@ if(ARX_HAVE_CRASHREPORTER)
 	set(arxcrashreporter_SOURCES
 		tools/crashreporter/tbg/HTTPClient.h
 		${BASE_SOURCES}
+		${VERSION_FILE}
 	)
 	
 	if(WIN32 AND USE_WINHTTP)
@@ -1699,6 +1722,7 @@ if(BUILD_TOOLS)
 	
 	set(arxsavetool_SOURCES
 		${BASE_SOURCES}
+		${VERSION_FILE}
 		${PLATFORM_CONSOLE_SOURCES}
 		${IO_RESOURCE_SOURCES}
 		${UTIL_CMDLINE_SOURCES}
@@ -1726,6 +1750,7 @@ if(BUILD_TOOLS)
 	
 	set(arxunpak_SOURCES
 		${BASE_SOURCES}
+		${VERSION_FILE}
 		${PLATFORM_CONSOLE_SOURCES}
 		${IO_RESOURCE_SOURCES}
 		${UTIL_CMDLINE_SOURCES}
@@ -1768,6 +1793,11 @@ if(INSTALL_BLENDER_PLUGIN)
 	install(DIRECTORY plugins/blender/arx_addon/ DESTINATION "${INSTALL_BLENDER_PLUGINDIR}")
 endif()
 
+if(BUILD_TESTS)
+	enable_testing()
+	include(tests/CMakeLists.txt)
+endif()
+
 
 # Build and link executables
 
@@ -1775,6 +1805,44 @@ if(UNITY_BUILD)
 	unity_build()
 else()
 	shared_build()
+endif()
+
+if(BUILD_TESTS)
+	
+	if(CMAKE_VERSION VERSION_LESS 2.8.11)
+		# Cannot set per-target includes
+		include_directories(tests)
+	else()
+		target_include_directories(arxtest PRIVATE tests)
+	endif()
+	
+	set(run_tests)
+	if(RUN_TESTS)
+		set(run_tests ALL)
+	endif()
+	
+	set(arxtest_binary "$<TARGET_FILE:arxtest>")
+	if(CMAKE_VERSION VERSION_LESS 2.8.12)
+		get_property(arxtest_binary TARGET arxtest PROPERTY LOCATION_${CMAKE_BUILD_TYPE})
+	endif()
+	
+	add_test(NAME arxtest
+		COMMAND ${CMAKE_COMMAND} -E chdir "${PROJECT_BINARY_DIR}" ${RUN_TARGET} "${arxtest_binary}"
+	)
+	
+	add_custom_command(
+		OUTPUT "${PROJECT_BINARY_DIR}/arxtest.check"
+		COMMAND ${RUN_TARGET} "${arxtest_binary}"
+		COMMAND ${CMAKE_COMMAND} -E touch "${PROJECT_BINARY_DIR}/arxtest.check"
+		DEPENDS arxtest
+		WORKING_DIRECTORY "${PROJECT_BINARY_DIR}"
+		COMMENT "Running tests" VERBATIM
+	)
+	
+	add_custom_target(check ${run_tests}
+		DEPENDS "${PROJECT_BINARY_DIR}/arxtest.check"
+	)
+	
 endif()
 
 
@@ -1816,10 +1884,6 @@ list(REMOVE_ITEM STYLE_CHECKED_SOURCES
 )
 
 add_style_check_target(style "${STYLE_CHECKED_SOURCES}" ARX)
-
-if(BUILD_TESTS)
-	add_subdirectory(tests "${PROJECT_BINARY_DIR}/test")
-endif()
 
 
 # Install Arx Libertatis data files
@@ -1932,6 +1996,11 @@ message("")
 
 # Detect configuration errors
 
+set(severity WARNING)
+if(STRICT_USE)
+	set(severity SEND_ERROR)
+endif()
+
 if(NOT (ARX_HAVE_PTHREADS OR WIN32))
 	message(SEND_ERROR "No supported thread libraries found.")
 endif()
@@ -1950,6 +2019,9 @@ endif()
 if(NOT (ARX_HAVE_CLOCK_GETTIME OR WIN32 OR ARX_HAVE_MACH_CLOCK))
 	message(SEND_ERROR "Need either clock_gettime or WIN32 or mach clock_get_time.")
 endif()
+if(USE_NATIVE_FS AND NOT ARX_HAVE_POSIX_FILESYSTEM AND NOT ARX_HAVE_WIN32_FILESYSTEM)
+	message(${severity} "Native filesystem backend not available")
+endif()
 if(WIN32 AND NOT ARX_HAVE_CXX17_FSTREAM_WCHAR)
 	message(WARNING "Missing support for Unicode file paths")
 endif()
@@ -1957,20 +2029,31 @@ endif()
 # Check for consistent configuration between SDL and libepoxy/GLEW
 if(ARX_HAVE_SDL AND ARX_HAVE_OPENGL AND NOT WIN32 AND NOT APPLE)
 	if(USE_X11 AND NOT SDL_HAVE_VIDEO_X11)
-		message(WARNING "SDL is not configured with X11 support")
+		message(${severity} "SDL is not configured with X11 support")
 	endif()
 	if(USE_WAYLAND AND NOT SDL_HAVE_VIDEO_WAYLAND)
-		message(WARNING "SDL is not configured with Wayland support")
+		message(${severity} "SDL is not configured with Wayland support")
 	endif()
 	if(EPOXY_FOUND)
 		set(wrangler "libepoxy")
 	else()
 		set(wrangler "GLEW")
 	endif()
-	if(SDL_HAVE_VIDEO_X11 AND NOT ARX_HAVE_GLX)
-		message(WARNING "SDL is configured with X11 support but ${wrangler} is missing GLX support")
+	if(NOT USE_X11 AND SDL_HAVE_VIDEO_X11 AND (ARX_HAVE_GLX OR (SDL_HAVE_VIDEO_X11_EGL AND ARX_HAVE_EGL)))
+		message(WARNING "X11-specific functionality is disabled even though SDL and ${wrangler} are configured with X11 support - consider enabling USE_X11")
+	endif()
+	if(SDL_HAVE_VIDEO_X11 AND NOT ARX_HAVE_GLX AND (NOT SDL_HAVE_VIDEO_X11_EGL OR NOT ARX_HAVE_EGL))
+		set(severity WARNING)
+		if(STRICT_USE AND USE_X11)
+			set(severity SEND_ERROR)
+		endif()
+		message(${severity} "SDL is configured with X11 support but ${wrangler} is missing GLX support")
 	endif()
 	if(SDL_HAVE_VIDEO_WAYLAND AND NOT ARX_HAVE_EGL)
-		message(WARNING "SDL is configured with Wayland support but ${wrangler} is missing EGL support")
+		set(severity WARNING)
+		if(STRICT_USE AND USE_WAYLAND)
+			set(severity SEND_ERROR)
+		endif()
+		message(${severity} "SDL is configured with Wayland support but ${wrangler} is missing EGL support")
 	endif()
 endif()

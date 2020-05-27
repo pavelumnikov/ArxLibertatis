@@ -101,74 +101,62 @@ public:
 		ioo->pos = io->pos;
 		ioo->angle = io->angle;
 		ioo->move = io->move;
-		ioo->show = io->show;
+		if(ioo->show != SHOW_FLAG_IN_INVENTORY) {
+			ioo->show = (io->show == SHOW_FLAG_IN_INVENTORY ? SHOW_FLAG_IN_SCENE : io->show);
+		}
 		
 		if(io == DRAGINTER) {
 			Set_DragInter(ioo);
 		}
 		
-		EntityHandle neww = ioo->index();
-		EntityHandle oldd = io->index();
+		InventoryPos oldPos = locateInInventories(io);
 		
-		if((io->ioflags & IO_ITEM) && io->_itemdata->count > 1) {
-			io->_itemdata->count--;
-			SendInitScriptEvent(ioo);
+		// Delay destruction of the object to avoid invalid references
+		bool removed = false;
+		if(ARX_INTERACTIVE_DestroyIOdelayed(io)) {
 			
-			if(playerInventory.locate(io)) {
-				giveToPlayer(ioo);
-			} else {
-				CheckForInventoryReplaceMe(ioo, io);
-			}
-		} else {
-			spells.replaceCaster(oldd, neww);
-			
-			InventoryPos oldPos = removeFromInventories(io);
-			
-			SendInitScriptEvent(ioo);
-			ioo->angle = last_angle;
-			TREATZONE_AddIO(ioo);
-			
-			// check that the init script didn't put the item anywhere
-			// if we ignore this we might create duplucate references
-			bool reInsert = true; // should the new item be inserted at the old items position?
-			if(locateInInventories(ioo)) {
-				// the init script already inserted the item into an inventory
-				reInsert = false;
-			}
-			for(size_t i = 0; i < MAX_EQUIPED; i++) {
-				if(ValidIONum(player.equiped[i])) {
-					if(entities[player.equiped[i]] == ioo) {
-						// the init script was sneaky and equiped the item
-						reInsert = false;
-					}
-				}
-			}
-			
-			if(reInsert) {
-				if(oldPos) {
-					insertIntoInventory(ioo, oldPos);
-				} else {
-					for(size_t i = 0; i < MAX_EQUIPED; i++) {
-						if(ValidIONum(player.equiped[i])) {
-							if(entities[player.equiped[i]] == io) {
-								ARX_EQUIPMENT_UnEquip(entities.player(), io, 1);
-								ARX_EQUIPMENT_Equip(entities.player(), ioo);
-							}
-						}
-					}
-				}
-			}
-			
-			// Delay destruction of the object to avoid invalid references
-			ARX_INTERACTIVE_DestroyIOdelayed(io);
+			spells.replaceCaster(io->index(), ioo->index());
+			removeFromInventories(io);
 			
 			// Prevent further script events as the object has been destroyed!
 			io->show = SHOW_FLAG_MEGAHIDE;
 			io->ioflags |= IO_FREEZESCRIPT;
-			return AbortRefuse;
+			
+			removed = true;
 		}
 		
-		return Success;
+		SendInitScriptEvent(ioo);
+		ioo->angle = last_angle;
+		TREATZONE_AddIO(ioo);
+		
+		// Check that the init script didn't put the item anywhere
+		bool reInsert = !locateInInventories(ioo);
+		for(size_t i = 0; i < MAX_EQUIPED; i++) {
+			if(ValidIONum(player.equiped[i])) {
+				if(entities[player.equiped[i]] == ioo) {
+					reInsert = false;
+				}
+			}
+		}
+		
+		if(reInsert) {
+			if(oldPos) {
+				if(!insertIntoInventory(ioo, oldPos)) {
+					PutInFrontOfPlayer(ioo);
+				}
+			} else {
+				for(size_t i = 0; i < MAX_EQUIPED; i++) {
+					if(ValidIONum(player.equiped[i])) {
+						if(entities[player.equiped[i]] == io) {
+							ARX_EQUIPMENT_UnEquip(entities.player(), io, 1);
+							ARX_EQUIPMENT_Equip(entities.player(), ioo);
+						}
+					}
+				}
+			}
+		}
+		
+		return removed ? AbortRefuse : Success;
 	}
 	
 };
@@ -403,7 +391,7 @@ public:
 		EntityHandle t = entities.getById(target);
 		
 		if(t == EntityHandle()) {
-			context.skipStatement();
+			context.skipBlock();
 		}
 		
 		return Success;
@@ -439,7 +427,7 @@ public:
 		EntityHandle t = entities.getById(target);
 		
 		if(!ValidIONum(t) || !hasVisibility(context.getEntity(), entities[t])) {
-			context.skipStatement();
+			context.skipBlock();
 		}
 		
 		return Success;
@@ -473,6 +461,7 @@ public:
 		
 		t->gameFlags &= ~GFLAG_MEGAHIDE;
 		if(hide) {
+			removeFromInventories(t);
 			if(megahide) {
 				t->gameFlags |= GFLAG_MEGAHIDE;
 				t->show = SHOW_FLAG_MEGAHIDE;
@@ -480,6 +469,7 @@ public:
 				t->show = SHOW_FLAG_HIDDEN;
 			}
 		} else if(t->show == SHOW_FLAG_MEGAHIDE || t->show == SHOW_FLAG_HIDDEN) {
+			arx_assert(!locateInInventories(t));
 			t->show = SHOW_FLAG_IN_SCENE;
 			if((t->ioflags & IO_NPC) && t->_npcdata->lifePool.current <= 0.f) {
 				t->animlayer[0].cur_anim = t->anims[ANIM_DIE];
@@ -581,6 +571,7 @@ public:
 			}
 			
 			if(!(io->ioflags & IO_NPC) || io->_npcdata->lifePool.current > 0) {
+				removeFromInventories(io);
 				if(io->show != SHOW_FLAG_HIDDEN && io->show != SHOW_FLAG_MEGAHIDE) {
 					io->show = SHOW_FLAG_IN_SCENE;
 				}
@@ -598,6 +589,7 @@ public:
 				Vec3f pos = GetItemWorldPosition(io);
 				ARX_INTERACTIVE_Teleport(entities.player(), pos);
 			} else if(!(io->ioflags & IO_NPC) || io->_npcdata->lifePool.current > 0) {
+				removeFromInventories(io);
 				if(io->show != SHOW_FLAG_HIDDEN && io->show != SHOW_FLAG_MEGAHIDE) {
 					io->show = SHOW_FLAG_IN_SCENE;
 				}
@@ -620,7 +612,7 @@ public:
 		
 		DebugScript("");
 		
-		context.getEntity()->targetinfo = EntityHandle(TARGET_PLAYER);
+		context.getEntity()->targetinfo = EntityHandle_Player;
 		GetTargetPos(context.getEntity());
 		
 		return Success;
@@ -650,6 +642,7 @@ public:
 		
 		// Prevent further script events as the object has been destroyed!
 		if(destroyed) {
+			removeFromInventories(entity);
 			entity->show = SHOW_FLAG_MEGAHIDE;
 			entity->ioflags |= IO_FREEZESCRIPT;
 			if(entity == context.getEntity()) {

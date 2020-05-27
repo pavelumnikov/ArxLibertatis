@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -226,7 +226,7 @@ void ParticleSystem::StopEmission() {
 	m_parameters.m_nbMax = 0;
 }
 
-bool ParticleSystem::IsAlive() {
+bool ParticleSystem::IsAlive() const {
 	return (iParticleNbAlive != 0 || m_parameters.m_nbMax != 0);
 }
 

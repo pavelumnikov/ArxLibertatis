@@ -21,9 +21,52 @@
 
 #include <iterator>
 
+#include "io/fs/FilePath.h"
 #include "io/fs/FileStream.h"
 
 namespace fs {
+
+bool create_directories(const path & p) {
+	
+	FileType type = get_type(p);
+	if(type != DoesNotExist) {
+		return type == Directory;
+	}
+	
+	if(p.is_root() || !create_directories(p.parent())) {
+		return false;
+	}
+	
+	return create_directory(p);
+}
+
+static bool clear_directory(const path & p) {
+	
+	for(directory_iterator it(p); !it.end(); ++it) {
+		fs::path entry = p / it.name();
+		if(it.link_type() == Directory) {
+			clear_directory(entry);
+		} else {
+			remove(entry);
+		}
+	}
+	
+	return remove_directory(p);
+}
+
+bool remove_all(const path & p) {
+	
+	FileType type = get_link_type(p);
+	if(type == DoesNotExist) {
+		return true;
+	}
+	
+	if(type == Directory) {
+		return clear_directory(p);
+	}
+	
+	return remove(p);
+}
 
 std::string read(const path & p) {
 	

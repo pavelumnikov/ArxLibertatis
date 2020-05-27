@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -100,8 +100,6 @@ public:
 		{ }
 		
 	};
-	
-public:
 	
 	class TextSize {
 		
@@ -223,8 +221,6 @@ private:
 	 * \return true if the glyph textures were changed
 	 */
 	bool insertMissingGlyphs(text_iterator begin, text_iterator end);
-	
-private:
 	
 	template <bool Draw>
 	TextSize process(int pX, int pY, text_iterator start, text_iterator end, Color color);

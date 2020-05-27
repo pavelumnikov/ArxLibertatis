@@ -125,6 +125,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "gui/Text.h"
 #include "gui/TextManager.h"
 #include "gui/debug/DebugKeys.h"
+#include "gui/hud/PlayerInventory.h"
+#include "gui/hud/SecondaryInventory.h"
 
 #include "input/Input.h"
 #include "input/Keyboard.h"
@@ -164,8 +166,6 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 class TextManager;
 
 Image savegame_thumbnail;
-
-extern long DONT_WANT_PLAYER_INZONE;
 
 //-----------------------------------------------------------------------------
 
@@ -260,12 +260,12 @@ Entity * FlyingOverObject(const Vec2s & pos) {
 		return player.torch;
 	}
 	
-	if(Entity * entity = GetFromInventory(pos).first) {
-		return entity;
+	if(g_secondaryInventoryHud.containsPos(pos)) {
+		return g_secondaryInventoryHud.getObj(pos);
 	}
 	
-	if(InInventoryPos(pos)) {
-		return NULL;
+	if(g_playerInventoryHud.containsPos(pos)) {
+		return g_playerInventoryHud.getObj(pos);
 	}
 	
 	if(Entity * entity = InterClick(pos)) {
@@ -358,13 +358,12 @@ void levelInit() {
 	
 	if(LOAD_N_ERASE) {
 		CleanInventory();
+		g_playerInventoryHud.setCurrentBag(0);
 		ARX_SCRIPT_Timer_ClearAll();
 		UnlinkAllLinkedObjects();
 		ARX_SCRIPT_ResetAll(false);
 	}
 	
-	SecondaryInventory = NULL;
-	TSecondaryInventory = NULL;
 	ARX_FOGS_Render();
 	
 	if(LOAD_N_ERASE) {
@@ -416,15 +415,7 @@ void levelInit() {
 	
 	PrepareIOTreatZone(1);
 	
-	progressBarAdvance();
-	LoadLevelScreen();
-	
-	if(DONT_WANT_PLAYER_INZONE) {
-		player.inzone = NULL;
-		DONT_WANT_PLAYER_INZONE = 0;
-	}
-	
-	progressBarAdvance();
+	progressBarAdvance(2.f);
 	LoadLevelScreen();
 
 	player.desiredangle.setPitch(0.f);
@@ -780,7 +771,7 @@ void ManageCombatModeAnimations() {
 			if(layer1.cur_anim == alist[ANIM_MISSILE_WAIT]) {
 				player.m_aimTime = PlatformDuration::ofRaw(1);
 				
-				if(eeMousePressed1() && Player_Arrow_Count() > 0) {
+				if(eeMousePressed1() && getInventoryItemWithLowestDurability("arrows", 1.f) != NULL) {
 					changeAnimation(io, 1, alist[ANIM_MISSILE_STRIKE_PART_1]);
 					io->isHit = false;
 				}
@@ -802,7 +793,7 @@ void ManageCombatModeAnimations() {
 				SendIOScriptEvent(NULL, io, SM_STRIKE, "bow");
 				StrikeAimtime();
 				player.m_strikeAimRatio = player.m_bowAimRatio;
-				Entity * quiver = Player_Arrow_Count_Decrease();
+				Entity * quiver = getInventoryItemWithLowestDurability("arrows", 1.f);
 				float poisonous = 0.f;
 				
 				if(quiver) {
@@ -1005,7 +996,7 @@ void ManageCombatModeAnimationsEND() {
 						ARX_EQUIPMENT_AttachPlayerWeaponToHand();
 						changeAnimation(io, 1, alist[ANIM_MISSILE_READY_PART_2]);
 					} else if(layer1.cur_anim == alist[ANIM_MISSILE_READY_PART_2]) {
-						if(Player_Arrow_Count() > 0) {
+						if(getInventoryItemWithLowestDurability("arrows", 1.f) != NULL) {
 							if(player.Interface & INTER_NO_STRIKE) {
 								player.Interface &= ~INTER_NO_STRIKE;
 								changeAnimation(io, 1, alist[ANIM_MISSILE_WAIT], EA_LOOP);

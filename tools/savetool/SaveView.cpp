@@ -379,8 +379,6 @@ static std::ostream & print_item_type(std::ostream & strm, s32 type) {
 	if(type & OBJECT_TYPE_2H) strm << " 2h";
 	if(type & OBJECT_TYPE_BOW) strm << " bow";
 	if(type & OBJECT_TYPE_SHIELD) strm << " shield";
-	if(type & OBJECT_TYPE_FOOD) strm << " food";
-	if(type & OBJECT_TYPE_GOLD) strm << " gold";
 	if(type & OBJECT_TYPE_ARMOR) strm << " armor";
 	if(type & OBJECT_TYPE_HELMET) strm << " helmet";
 	if(type & OBJECT_TYPE_RING) strm << " ring";
@@ -1618,7 +1616,7 @@ static void print_io_npc(SaveBlock & save, const ARX_CHANGELEVEL_IO_SAVE & ais,
 		std::cout << "  True target: ";
 		switch(as->pathfind.truetarget) {
 			case TARGET_PATH: std::cout << "path"; break;
-			case TARGET_PLAYER: std::cout << "player"; break;
+			case 0: std::cout << "player"; break;
 			default: std::cout << "(unknown)";
 		}
 		std::cout << '\n';

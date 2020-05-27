@@ -78,13 +78,14 @@ class UncompressedFile : public PakFile {
 	
 	std::istream & m_archive;
 	size_t m_offset;
+	size_t m_size;
 	
 public:
 	
 	explicit UncompressedFile(std::istream * archive, size_t offset, size_t size)
-		: PakFile(size), m_archive(*archive), m_offset(offset) { }
+		: m_archive(*archive), m_offset(offset), m_size(size) { }
 	
-	void read(void * buf) const;
+	std::string read() const;
 	
 	PakFileHandle * open() const;
 	
@@ -112,16 +113,22 @@ public:
 	
 };
 
-void UncompressedFile::read(void * buf) const {
+std::string UncompressedFile::read() const {
 	
 	m_archive.seekg(m_offset);
 	
-	fs::read(m_archive, buf, size());
+	std::string buffer;
 	
-	arx_assert(!m_archive.fail());
-	arx_assert(size_t(m_archive.gcount()) == size());
+	buffer.resize(m_size);
+	fs::read(m_archive, &buffer[0], m_size);
+	if(m_archive.fail()) {
+		LogError << "Error reading from PAK archive";
+		buffer.clear();
+	}
 	
 	m_archive.clear();
+	
+	return buffer;
 }
 
 PakFileHandle * UncompressedFile::open() const {
@@ -130,14 +137,14 @@ PakFileHandle * UncompressedFile::open() const {
 
 size_t UncompressedFileHandle::read(void * buf, size_t size) {
 	
-	if(m_offset >= m_file.size()) {
+	if(m_offset >= m_file.m_size) {
 		return 0;
 	}
 	
 	m_file.m_archive.seekg(m_file.m_offset + m_offset);
 	
-	if(m_file.size() < m_offset + size) {
-		size = (m_offset > m_file.size()) ? 0 : (m_file.size() - m_offset);
+	if(m_file.m_size < m_offset + size) {
+		size = (m_offset > m_file.m_size) ? 0 : (m_file.m_size - m_offset);
 	}
 	
 	fs::read(m_file.m_archive, buf, size);
@@ -155,7 +162,7 @@ int UncompressedFileHandle::seek(Whence whence, int offset) {
 	size_t base;
 	switch(whence) {
 		case SeekSet: base = 0; break;
-		case SeekEnd: base = m_file.size(); break;
+		case SeekEnd: base = m_file.m_size; break;
 		case SeekCur: base = m_offset; break;
 		default: return -1;
 	}
@@ -179,13 +186,14 @@ class CompressedFile : public PakFile {
 	fs::ifstream & m_archive;
 	size_t m_offset;
 	size_t m_storedSize;
+	size_t m_uncompressedSize;
 	
 public:
 	
 	explicit CompressedFile(fs::ifstream * archive, size_t offset, size_t size, size_t storedSize)
-		: PakFile(size), m_archive(*archive), m_offset(offset), m_storedSize(storedSize) { }
+		:  m_archive(*archive), m_offset(offset), m_storedSize(storedSize), m_uncompressedSize(size) { }
 	
-	void read(void * buf) const;
+	std::string read() const;
 	
 	PakFileHandle * open() const;
 	
@@ -237,27 +245,26 @@ size_t blastInFile(void * Param, const unsigned char ** buf) {
 	return fs::read(p->file, p->readbuf, count).gcount();
 }
 
-void CompressedFile::read(void * buf) const {
+std::string CompressedFile::read() const {
 	
 	m_archive.seekg(m_offset);
 	
 	std::string buffer;
+	
 	buffer.resize(m_storedSize);
 	fs::read(m_archive, &buffer[0], m_storedSize);
-	
-	BlastMemInBuffer in(buffer.data(), buffer.size());
-	BlastMemOutBuffer out(reinterpret_cast<char *>(buf), size());
-	
-	int r = blast(blastInMem, &in, blastOutMem, &out);
-	if(r) {
-		LogError << "Blast error " << r << " outSize=" << size();
+	if(m_archive.fail()) {
+		LogError << "Error reading from PAK archive";
+		buffer.clear();
 	}
 	
-	arx_assert(!m_archive.fail());
-	arx_assert(in.size == 0);
-	arx_assert(out.size == 0);
-	
 	m_archive.clear();
+	
+	if(buffer.empty()) {
+		return buffer;
+	}
+	
+	return blast(buffer, m_uncompressedSize);
 }
 
 PakFileHandle * CompressedFile::open() const {
@@ -307,13 +314,13 @@ int blastOutMemOffset(void * Param, unsigned char * buf, size_t len) {
 
 size_t CompressedFileHandle::read(void * buf, size_t size) {
 	
-	if(m_offset >= m_file.size()) {
+	if(m_offset >= m_file.m_uncompressedSize) {
 		return 0;
 	}
 	
-	if(size < m_file.size() || m_offset != 0) {
+	if(size < m_file.m_uncompressedSize || m_offset != 0) {
 		LogWarning << "Partially reading a compressed file - inefficent: size=" << size
-		           << " offset=" << m_offset << " total=" << m_file.size();
+		           << " offset=" << m_offset << " total=" << m_file.m_uncompressedSize;
 	}
 	
 	m_file.m_archive.seekg(m_file.m_offset);
@@ -324,7 +331,7 @@ size_t CompressedFileHandle::read(void * buf, size_t size) {
 	out.buf = reinterpret_cast<char *>(buf);
 	out.currentOffset = 0;
 	out.startOffset = m_offset;
-	out.endOffset = std::min(m_offset + size, m_file.size());
+	out.endOffset = std::min(m_offset + size, m_file.m_uncompressedSize);
 	
 	if(out.endOffset <= out.startOffset) {
 		return 0;
@@ -332,8 +339,8 @@ size_t CompressedFileHandle::read(void * buf, size_t size) {
 	
 	// TODO this is really inefficient
 	int r = ::blast(blastInFile, &in, blastOutMemOffset, &out);
-	if(r && (r != 1 || (size == m_file.size() && m_offset == 0))) {
-		LogError << "PakReader::fRead: blast error " << r << " outSize=" << m_file.size();
+	if(r && (r != 1 || (size == m_file.m_uncompressedSize && m_offset == 0))) {
+		LogError << "PakReader::fRead: blast error " << r << " outSize=" << m_file.m_uncompressedSize;
 		return 0;
 	}
 	
@@ -351,7 +358,7 @@ int CompressedFileHandle::seek(Whence whence, int offset) {
 	size_t base;
 	switch(whence) {
 		case SeekSet: base = 0; break;
-		case SeekEnd: base = m_file.size(); break;
+		case SeekEnd: base = m_file.m_uncompressedSize; break;
 		case SeekCur: base = m_offset; break;
 		default: return -1;
 	}
@@ -376,9 +383,9 @@ class PlainFile : public PakFile {
 	
 public:
 	
-	PlainFile(const fs::path & path, size_t size) : PakFile(size), m_path(path) { }
+	PlainFile(const fs::path & path) : m_path(path) { }
 	
-	void read(void * buf) const;
+	std::string read() const;
 	
 	PakFileHandle * open() const;
 	
@@ -405,15 +412,8 @@ public:
 	
 };
 
-void PlainFile::read(void * buf) const {
-	
-	fs::ifstream ifs(m_path, fs::fstream::in | fs::fstream::binary);
-	arx_assert(ifs.is_open());
-	
-	fs::read(ifs, buf, size());
-	
-	arx_assert(!ifs.fail());
-	arx_assert(size_t(ifs.gcount()) == size());
+std::string PlainFile::read() const {
+	return fs::read(m_path);
 }
 
 PakFileHandle * PlainFile::open() const {
@@ -589,7 +589,9 @@ PakFileHandle * PakReader::open(const res::path & name) {
 
 bool PakReader::addFiles(const fs::path & path, const res::path & mount) {
 	
-	if(fs::is_directory(path)) {
+	fs::FileType type = fs::get_type(path);
+	
+	if(type == fs::Directory) {
 		
 		bool ret = addFiles(addDirectory(mount), path);
 		
@@ -600,7 +602,7 @@ bool PakReader::addFiles(const fs::path & path, const res::path & mount) {
 		
 		return ret;
 		
-	} else if(fs::is_regular_file(path) && !mount.empty()) {
+	} else if(type == fs::RegularFile && !mount.empty()) {
 		
 		PakDirectory * dir = addDirectory(mount.parent());
 		
@@ -629,19 +631,13 @@ bool PakReader::removeDirectory(const res::path & name) {
 	}
 }
 
-bool PakReader::addFile(PakDirectory * dir, const fs::path & path,
-                        const std::string & name) {
+bool PakReader::addFile(PakDirectory * dir, const fs::path & path, const std::string & name) {
 	
 	if(name.empty()) {
 		return false;
 	}
 	
-	u64 size = fs::file_size(path);
-	if(size == u64(-1)) {
-		return false;
-	}
-	
-	dir->addFile(name, new PlainFile(path, size));
+	dir->addFile(name, new PlainFile(path));
 	return true;
 }
 
@@ -662,9 +658,11 @@ bool PakReader::addFiles(PakDirectory * dir, const fs::path & path) {
 		
 		boost::to_lower(name);
 		
-		if(it.is_directory()) {
+		fs::FileType type = it.type();
+		
+		if(type == fs::Directory) {
 			ret &= addFiles(dir->addDirectory(name), entry);
-		} else if(it.is_regular_file()) {
+		} else if(type == fs::RegularFile) {
 			ret &= addFile(dir, entry, name);
 		}
 		

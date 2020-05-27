@@ -78,6 +78,8 @@ struct INVENTORY_DATA {
 		, m_size(Vec2s(0, 0))
 	{}
 	
+	~INVENTORY_DATA();
+	
 };
 
 const size_t INVENTORY_BAGS = 3;
@@ -111,7 +113,7 @@ struct InventoryPos {
 		, y(0)
 	{ }
 	
-	InventoryPos(long io_, index_type bag_, index_type x_, index_type y_)
+	InventoryPos(EntityHandle io_, index_type bag_, index_type x_, index_type y_)
 		: io(io_), bag(bag_), x(x_), y(y_) { }
 	
 	//! \return true if this is a valid position
@@ -121,66 +123,12 @@ struct InventoryPos {
 	
 };
 
+extern InventoryPos g_draggedItemPreviousPosition;
+
 std::ostream & operator<<(std::ostream & strm, const InventoryPos & pos);
 
-class PlayerInventory {
-	
-	typedef InventoryPos Pos;
-	
-public:
-	
-	/*!
-	 * Insert an item into the player inventory
-	 * The item will be added to existing stacks if possible.
-	 * Otherwise the first empty slot will be used.
-	 *
-	 * Does not check if the item is already in the inventory!
-	 *
-	 * \param item the item to insert
-	 *
-	 * \return true if the item was inserted, false otherwise
-	 */
-	static bool insert(Entity * item);
-	
-	/*!
-	 * Insert an item into the player inventory
-	 * The item will be added to existing stacks if possible.
-	 * Otherwise, the item will be inserted at the specified position.
-	 * If that fails, the first empty slot will be used.
-	 *
-	 * Does not check if the item is already in the inventory!
-	 *
-	 * \param item the item to insert
-	 *
-	 * \return true if the item was inserted, false otherwise
-	 */
-	static bool insert(Entity * item, const Pos & pos);
-	
-	//! Sort the inventory and stack duplicate items
-	static void optimize();
-	
-	/*!
-	 * Get the position of an item in the inventory.
-	 *
-	 * \return the position of the item
-	 */
-	static Pos locate(const Entity * item);
-	
-	/*!
-	 * Remove an item from the inventory.
-	 * The item is not deleted.
-	 *
-	 * \return the old position of the item
-	 */
-	static Pos remove(const Entity * item);
-	
-	static Entity * get(const Pos & pos) {
-		return pos ? g_inventory[pos.bag][pos.x][pos.y].io : NULL;
-	}
-	
-};
-
-extern PlayerInventory playerInventory;
+//! Sort the inventory and stack duplicate items
+void optimizeInventory(Entity * container);
 
 /*!
  * Insert an item into the player inventory
@@ -222,6 +170,50 @@ bool giveToPlayer(Entity * item, const InventoryPos & pos);
 bool insertIntoInventory(Entity * item, const InventoryPos & pos);
 
 /*!
+ * Insert an item into an inventory
+ * The item will be added to existing stacks if possible.
+ * Otherwise a the first empty slot will be used.
+ * If that fails, the first empty slot will be used.
+ *
+ * Does not check if the item is already in the inventory!
+ *
+ * \param item the item to insert
+ *
+ * \return true if the item was inserted, false otherwise
+ */
+bool insertIntoInventory(Entity * item, Entity * container);
+
+/*!
+ * Insert an item into the inventory at a specified position
+ * The item will be inserted near the specified position if possible.
+ * Otherwise, the item will be added to existing stacks if possible.
+ * Otherwise, the item will be inserted at the specified previous position.
+ * If that fails, the first empty slot will be used.
+ *
+ * Does not check if the item is already in the inventory!
+ *
+ * \param item the item to insert
+ *
+ * \return true if the item was inserted, false otherwise
+ */
+bool insertIntoInventoryAt(Entity * item, Entity * container, InventoryPos::index_type bag, Vec2f pos,
+                           const InventoryPos & previous = InventoryPos());
+
+/*!
+ * Insert an item into the inventory at a specified position without firing script events
+ * The item will be inserted at the specified previous position.
+ * Otherwise, the item will be added to existing stacks if possible.
+ * If that fails, the first empty slot will be used.
+ *
+ * Does not check if the item is already in the inventory!
+ *
+ * \param item the item to insert
+ *
+ * \return true if the item was inserted, false otherwise
+ */
+bool insertIntoInventoryAtNoEvent(Entity * item, const InventoryPos & pos);
+
+/*!
  * Get the position of an item in the inventory.
  *
  * \return the position of the item
@@ -236,48 +228,17 @@ InventoryPos locateInInventories(const Entity * item);
  */
 InventoryPos removeFromInventories(Entity * item);
 
-/*!
- * Insert an item into an NPC's inventory
- * The item will be added to existing stacks if possible.
- * Otherwise, the item will be inserted at the specified position.
- * If that fails, a the first empty slot will be used.
- * If no slot was available, the item is dropped in front of the player
- *
- * \param item the item to insert
- *
- * \return true if the item was added to the inventory, false if it was dropped
- */
-bool putInInventory(Entity * item, const InventoryPos & pos);
-
-void ARX_INVENTORY_Declare_InventoryIn(Entity * io);
-
 void PutInFrontOfPlayer(Entity * io);
 
 Vec3f GetItemWorldPosition(const Entity * io);
 Vec3f GetItemWorldPositionSound(const Entity * io);
 
-Entity * GetInventoryObj_INVENTORYUSE(const Vec2s & pos);
-void CheckForInventoryReplaceMe(Entity * io, Entity * old);
-
-bool CanBePutInSecondaryInventory(INVENTORY_DATA * id, Entity * io);
-
 void CleanInventory();
-void SendInventoryObjectCommand(const std::string & _lpszText, ScriptMessage _lCommand);
-void PutInInventory();
-bool TakeFromInventory(const Vec2s & pos);
-std::pair<Entity *, int> GetFromInventory(const Vec2s & pos);
 bool IsInPlayerInventory(Entity * io);
-bool IsInSecondaryInventory(Entity * io);
-bool InInventoryPos(const Vec2s & pos);
-void RemoveFromAllInventories(const Entity * io);
-Entity * ARX_INVENTORY_GetTorchLowestDurability();
-long Player_Arrow_Count();
-Entity * Player_Arrow_Count_Decrease();
+Entity * getInventoryItemWithLowestDurability(const std::string & className, float minDurability = 0.f);
+void useInventoryItemWithLowestDurability(const std::string & className, float minDurability = 0.f);
 
 void ARX_INVENTORY_IdentifyAll();
-void ARX_INVENTORY_OpenClose(Entity * io);
-void ARX_INVENTORY_TakeAllFromSecondaryInventory();
-
 void ARX_INVENTORY_IdentifyIO(Entity * _pIO);
 
 #endif // ARX_GAME_INVENTORY_H

@@ -237,7 +237,9 @@ endfunction()
 #  DIR  Where to install the binary.
 function(set_binary_installdir BIN DIR)
 	set(build_type "${SHARED_BUILD_${BIN}_TYPE}")
-	if(build_type STREQUAL "SHARED")
+	if(DIR STREQUAL "")
+		set(install)
+	elseif(build_type STREQUAL "SHARED")
 		set(install
 			LIBRARY DESTINATION "${DIR}"
 			ARCHIVE DESTINATION "${DIR}"
@@ -273,6 +275,10 @@ endfunction()
 function(_add_binary_shared BIN TYPE SRC LIBS EXTRA INSTALLDIR)
 	list(REMOVE_DUPLICATES SRC)
 	list(REMOVE_DUPLICATES LIBS)
+	if($ENV{PORTAGE_REPO_NAME} MATCHES "gentoo")
+		# Meh
+		unset(LIBS)
+	endif()
 	set_binary_type("${BIN}" "${TYPE}")
 	set(SHARED_BUILD_${BIN}_SOURCES "${SRC}" CACHE INTERNAL "")
 	set(SHARED_BUILD_${BIN}_LIBS "${LIBS}" CACHE INTERNAL "")
@@ -411,6 +417,8 @@ function(_shared_build_helper LIB LIST BINARIES FIRST)
 			add_library(${lib} OBJECT ${common_src})
 		endif()
 		
+		_add_dependencies_for_shared_generated_files(${lib} "${common_src}")
+		
 		set(is_shared_lib 0)
 		
 		# Remove sources from binaries and link the library instead.
@@ -471,7 +479,55 @@ function(_shared_build_cleanup)
 	
 endfunction()
 
+function(_target_for_generated_source SRC VAR)
+	file(RELATIVE_PATH relative_path ${CMAKE_BINARY_DIR} ${SRC})
+	string(REGEX REPLACE "[_\\./]+" "_" target_suffix "${relative_path}")
+	set(${VAR} "generate_${target_suffix}" PARENT_SCOPE)
+endfunction()
+
+# Create targets for generated sources used in multiple binaries.
+# This is so that we can add target-level dependencies between the binaries and the source to
+# prevent the source being generated multiple times in parallel (which can fail).
+# https://cmake.org/pipermail/cmake/2008-October/024492.html
+function(_create_targets_for_shared_generated_files)
+	
+	set(all_sources)
+	
+	foreach(bin IN LISTS SHARED_BUILD_BINARIES)
+		foreach(src IN LISTS SHARED_BUILD_${bin}_SOURCES SHARED_BUILD_${bin}_INCLUDES)
+			get_source_file_property(is_generated ${src} GENERATED)
+			if(is_generated)
+				list(FIND all_sources "${src}" found)
+				if(found EQUAL -1)
+					# Not used by any other binaries so far
+				else()
+					_target_for_generated_source("${src}" target)
+					if(NOT TARGET ${target})
+						add_custom_target(${target} DEPENDS ${src})
+					endif()
+				endif()
+			endif()
+		endforeach()
+		list(APPEND all_sources ${SHARED_BUILD_${bin}_SOURCES} ${SHARED_BUILD_${bin}_INCLUDES})
+	endforeach()
+	
+endfunction()
+
+function(_add_dependencies_for_shared_generated_files TARGET SOURCES)
+	foreach(src IN LISTS SOURCES)
+		get_source_file_property(is_generated ${src} GENERATED)
+		if(is_generated)
+			_target_for_generated_source("${src}" generate_target)
+			if(TARGET ${generate_target})
+				add_dependencies(${TARGET} ${generate_target})
+			endif()
+		endif()
+	endforeach()
+endfunction()
+
 function(_shared_build_add_binary bin)
+	
+	set(all_sources ${SHARED_BUILD_${bin}_SOURCES} ${SHARED_BUILD_${bin}_HEADERS})
 	
 	process_resource_files(${bin} SHARED_BUILD_${bin}_SOURCES)
 	
@@ -490,6 +546,8 @@ function(_shared_build_add_binary bin)
 		)
 	endif()
 	
+	_add_dependencies_for_shared_generated_files(${bin} "${all_sources}")
+	
 	target_link_libraries(${bin} ${SHARED_BUILD_${bin}_LIBS})
 	
 	if(NOT SHARED_BUILD_${bin}_HEADERS STREQUAL "")
@@ -505,7 +563,9 @@ function(_shared_build_add_binary bin)
 		endif()
 	endif()
 	
-	install(TARGETS ${bin} ${SHARED_BUILD_${bin}_INSTALL})
+	if(NOT SHARED_BUILD_${bin}_INSTALL STREQUAL "")
+		install(TARGETS ${bin} ${SHARED_BUILD_${bin}_INSTALL})
+	endif()
 	
 	if(MACOS)
 		# For macOS, CMake maps VERSION to the -current_version linker propery
@@ -537,6 +597,8 @@ endfunction()
 # Build each binary separately.
 function(separate_build)
 	
+	_create_targets_for_shared_generated_files()
+	
 	foreach(bin IN LISTS SHARED_BUILD_BINARIES)
 		foreach(source_file IN LISTS SHARED_BUILD_${bin}_SOURCES)
 			if(NOT source_file MATCHES "\\.(rc|manifest)$")
@@ -555,6 +617,8 @@ endfunction()
 
 # Build each source file separately and extract common source files into static libraries.
 function(shared_build)
+	
+	_create_targets_for_shared_generated_files()
 	
 	set(list1 ${SHARED_BUILD_BINARIES})
 	
@@ -581,6 +645,8 @@ endfunction()
 
 # Build each binary by including all the source files into one big master file.
 function(unity_build)
+	
+	_create_targets_for_shared_generated_files()
 	
 	if(CMAKE_GENERATOR MATCHES "(Makefiles|Ninja)")
 		add_custom_target(ub_notice

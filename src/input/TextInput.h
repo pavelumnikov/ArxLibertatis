@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2016-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -116,7 +116,7 @@ public:
 	static bool isWordSeparator(char c);
 	
 	void selectAll();
-	bool selected() { return m_selected; }
+	bool selected() const { return m_selected; }
 	
 	const std::string & text() const { return m_text; }
 	size_t cursorPos() const { return m_cursorPos; }

@@ -67,7 +67,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 class TextureContainer;
 struct ANIM_HANDLE;
-struct ARX_PATH;
+struct Zone;
 struct ARX_USE_PATH;
 struct EERIE_3DOBJ;
 struct INVENTORY_DATA;
@@ -112,8 +112,6 @@ enum ItemTypeFlag {
 	OBJECT_TYPE_2H       = 1 << 3,
 	OBJECT_TYPE_BOW      = 1 << 4,
 	OBJECT_TYPE_SHIELD   = 1 << 5,
-	OBJECT_TYPE_FOOD     = 1 << 6,
-	OBJECT_TYPE_GOLD     = 1 << 7,
 	OBJECT_TYPE_ARMOR    = 1 << 8,
 	OBJECT_TYPE_HELMET   = 1 << 9,
 	OBJECT_TYPE_RING     = 1 << 10,
@@ -322,7 +320,7 @@ public:
 	SYMBOL_DRAW * symboldraw;
 	LightHandle dynlight;
 	short lastspeechflag;
-	ARX_PATH * inzone;
+	Zone * inzone;
 	IO_HALO halo;
 	IO_HALO halo_native;
 	
@@ -381,7 +379,6 @@ public:
 	res::path inventory_skin;
 	long isHit;
 	EntityVisilibity inzone_show;
-	EntityHandle summoner;
 	long spark_n_blood;
 
 	Color3f special_color;

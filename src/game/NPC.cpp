@@ -80,6 +80,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "gui/Cursor.h"
 #include "gui/Interface.h"
 #include "gui/Speech.h"
+#include "gui/hud/SecondaryInventory.h"
 
 #include "graphics/BaseGraphicsTypes.h"
 #include "graphics/Color.h"
@@ -258,10 +259,10 @@ static void ARX_NPC_CreateExRotateData(Entity * io) {
 }
 
 //! Resurects an NPC
-void ARX_NPC_Revive(Entity * io, bool init)
-{
-	if(TSecondaryInventory && TSecondaryInventory->io == io) {
-		TSecondaryInventory = NULL;
+void ARX_NPC_Revive(Entity * io, bool init) {
+	
+	if(g_secondaryInventoryHud.isOpen(io)) {
+		g_secondaryInventoryHud.close();
 	}
 	
 	io->mainevent = SM_MAIN;
@@ -2906,7 +2907,7 @@ void GetTargetPos(Entity * io, unsigned long smoothing) {
 		return;
 	}
 	
-	if(io->targetinfo == EntityHandle(TARGET_PLAYER) || io->targetinfo == EntityHandle()) {
+	if(io->targetinfo == EntityHandle_Player || io->targetinfo == EntityHandle()) {
 		io->target = player.pos + Vec3f(0.f, player.size.y, 0.f);
 		return;
 	} else if(ValidIONum(io->targetinfo)) {

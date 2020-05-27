@@ -38,6 +38,7 @@
 
 #include "animation/AnimationRender.h"
 
+#include "graphics/Raycast.h"
 #include "graphics/Renderer.h"
 #include "graphics/data/TextureContainer.h"
 #include "graphics/particle/ParticleEffects.h"
@@ -52,7 +53,7 @@
 
 const size_t MAX_THROWN_OBJECTS = 100;
 
-Projectile g_projectiles[MAX_THROWN_OBJECTS];
+static Projectile g_projectiles[MAX_THROWN_OBJECTS];
 
 static bool IsPointInField(const Vec3f & pos) {
 
@@ -78,7 +79,7 @@ static bool IsPointInField(const Vec3f & pos) {
 
 static void ARX_THROWN_OBJECT_Kill(size_t num) {
 	if(num < MAX_THROWN_OBJECTS) {
-		g_projectiles[num].flags = 0;
+		g_projectiles[num].obj = NULL;
 		delete g_projectiles[num].m_trail;
 		g_projectiles[num].m_trail = NULL;
 	}
@@ -93,25 +94,21 @@ void ARX_THROWN_OBJECT_KillAll() {
 static long ARX_THROWN_OBJECT_GetFree() {
 	
 	GameInstant latest_time = g_gameTime.now();
-	long latest_obj = -1;
-
+	size_t oldest = 0;
+	
 	for(size_t i = 0; i < MAX_THROWN_OBJECTS; i++) {
-		if(g_projectiles[i].flags & ATO_EXIST) {
-			if(g_projectiles[i].creation_time < latest_time) {
-				latest_obj = i;
-				latest_time = g_projectiles[i].creation_time;
-			}
-		} else {
+		if(!g_projectiles[i].obj) {
 			return i;
 		}
+		if(g_projectiles[i].creation_time < latest_time) {
+			         oldest = i;
+			latest_time = g_projectiles[i].creation_time;
+		}
 	}
-
-	if(latest_obj >= 0) {
-		ARX_THROWN_OBJECT_Kill(size_t(latest_obj));
-		return latest_obj;
-	}
-
-	return -1;
+	
+	ARX_THROWN_OBJECT_Kill(oldest);
+	
+	return oldest;
 }
 
 extern EERIE_3DOBJ * arrowobj;
@@ -142,7 +139,7 @@ void ARX_THROWN_OBJECT_Throw(EntityHandle source, const Vec3f & position, const 
 	projectile.m_trail->Update(g_gameTime.lastFrameDuration());
 	
 	projectile.creation_time = g_gameTime.now();
-	projectile.flags |= ATO_EXIST | ATO_MOVING;
+	projectile.flags = 0;
 	
 	if(source == EntityHandle_Player) {
 		Entity * tio = entities.get(player.equiped[EQUIP_SLOT_WEAPON]);
@@ -222,56 +219,6 @@ static float ARX_THROWN_ComputeDamages(const Projectile & projectile, EntityHand
 	return dmgs;
 }
 
-static EERIEPOLY * CheckArrowPolyCollision(const Vec3f & start, const Vec3f & end) {
-	
-	EERIE_TRI pol;
-	pol.v[0] = start;
-	pol.v[2] = end - Vec3f(2.f, 15.f, 2.f);
-	pol.v[1] = end;
-
-	// TODO copy-paste background tiles
-	int tilex = int(end.x * ACTIVEBKG->m_mul.x);
-	int tilez = int(end.z * ACTIVEBKG->m_mul.y);
-	int radius = 2;
-	
-	int minx = std::max(tilex - radius, 0);
-	int maxx = std::min(tilex + radius, ACTIVEBKG->m_size.x - 1);
-	int minz = std::max(tilez - radius, 0);
-	int maxz = std::min(tilez + radius, ACTIVEBKG->m_size.y - 1);
-	
-	for(int z = minz; z <= maxz; z++)
-	for(int x = minx; x <= maxx; x++) {
-		const BackgroundTileData & feg = ACTIVEBKG->m_tileData[x][z];
-		BOOST_FOREACH(EERIEPOLY * ep, feg.polyin) {
-			
-			if(ep->type & (POLY_WATER | POLY_TRANS | POLY_NOCOL)) {
-				continue;
-			}
-			
-			EERIE_TRI pol2;
-			pol2.v[0] = ep->v[0].p;
-			pol2.v[1] = ep->v[1].p;
-			pol2.v[2] = ep->v[2].p;
-
-			if(Triangles_Intersect(pol2, pol)) {
-				return ep;
-			}
-
-			if(ep->type & POLY_QUAD) {
-				pol2.v[0] = ep->v[1].p;
-				pol2.v[1] = ep->v[3].p;
-				pol2.v[2] = ep->v[2].p;
-				if(Triangles_Intersect(pol2, pol)) {
-					return ep;
-				}
-			}
-			
-		}
-	}
-
-	return NULL;
-}
-
 static void CheckExp(const Projectile & projectile) {
 	
 	if((projectile.flags & ATO_FIERY) && !(projectile.flags & ATO_UNDERWATER)) {
@@ -301,19 +248,23 @@ void ARX_THROWN_OBJECT_Render() {
 	
 	for(size_t i = 0; i < MAX_THROWN_OBJECTS; i++) {
 		Projectile & projectile = g_projectiles[i];
-		if(!(projectile.flags & ATO_EXIST))
+		
+		if(!projectile.obj) {
 			continue;
-
+		}
+		
 		TransformInfo t(projectile.position, projectile.quat);
 		// Object has to be retransformed because arrows share the same object
 		DrawEERIEInter_ModelTransform(projectile.obj, t);
 		DrawEERIEInter_ViewProjectTransform(projectile.obj);
 		DrawEERIEInter_Render(projectile.obj, t, NULL);
-
+		
 		if(projectile.m_trail) {
 			projectile.m_trail->Render();
 		}
+		
 	}
+	
 }
 
 static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta) {
@@ -321,7 +272,7 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 	float timeDeltaMs = toMsf(timeDelta);
 	
 	Projectile & projectile = g_projectiles[i];
-	if(!(projectile.flags & ATO_EXIST)) {
+	if(!projectile.obj) {
 		return;
 	}
 	
@@ -333,16 +284,21 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 		return;
 	}
 	
-		// Now render object !
-	if(!projectile.obj) {
+	if(projectile.velocity == 0.f) {
+		if(projectile.m_trail) {
+			projectile.m_trail->Update(timeDelta);
+			if(projectile.m_trail->emtpy()) {
+				delete projectile.m_trail;
+				projectile.m_trail = NULL;
+			}
+		}
 		return;
 	}
 	
 	TransformInfo t(projectile.position, projectile.quat);
 	DrawEERIEInter_ModelTransform(projectile.obj, t);
 	
-	if((projectile.flags & ATO_FIERY) && (projectile.flags & ATO_MOVING)
-	   && !(projectile.flags & ATO_UNDERWATER)) {
+	if((projectile.flags & ATO_FIERY) && !(projectile.flags & ATO_UNDERWATER)) {
 		EERIE_LIGHT * light = dynLightCreate();
 		if(light && g_gameTime.lastFrameDuration() > 0) {
 			light->intensity = 1.f;
@@ -360,10 +316,6 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 	if(projectile.m_trail) {
 		projectile.m_trail->SetNextPosition(projectile.position);
 		projectile.m_trail->Update(timeDelta);
-	}
-	
-	if(!(projectile.flags & ATO_MOVING)) {
-		return;
 	}
 	
 	float mod = timeDeltaMs * projectile.velocity;
@@ -406,54 +358,34 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 		
 		const Vec3f v0 = actionPointPosition(projectile.obj, projectile.obj->actionlist[j].idx);
 		
-		Vec3f dest = original_pos + projectile.vector * 95.f;
-		Vec3f orgn = original_pos - projectile.vector * 25.f;
-		EERIEPOLY * ep = CheckArrowPolyCollision(orgn, dest);
-		if(ep) {
+		Vec3f dest = original_pos + projectile.vector * 90.f;
+		Vec3f orgn = original_pos - projectile.vector * 20.f;
+		RaycastResult result = RaycastLine(orgn, dest, POLY_WATER | POLY_TRANS | POLY_NOCOL);
+		if(result || IsPointInField(v0)) {
 			
-			ParticleSparkSpawn(v0, 14, SpawnSparkType_Default);
+			ParticleSparkSpawn(v0, result ? 14 : 24, SpawnSparkType_Default);
 			CheckExp(projectile);
 			
 			if(ValidIONum(projectile.source)) {
 				ARX_NPC_SpawnAudibleSound(v0, entities[projectile.source]);
 			}
 			
-			projectile.flags &= ~ATO_MOVING;
 			projectile.velocity = 0.f;
-			
 			
 			if(ValidIONum(projectile.source)) {
 				std::string bkg_material = "earth";
-				if(ep && ep->tex && !ep->tex->m_texName.empty()) {
-					bkg_material = GetMaterialString(ep->tex->m_texName);
+				if(result.hit && result.hit->tex && !result.hit->tex->m_texName.empty()) {
+					bkg_material = GetMaterialString(result.hit->tex->m_texName);
 				}
 				ARX_SOUND_PlayCollision("dagger", bkg_material, 1.f, 1.f, v0, entities[projectile.source]);
 			}
 			
 			projectile.position = original_pos;
 			
-			return;
-		}
-		
-		if(IsPointInField(v0)) {
-			
-			ParticleSparkSpawn(v0, 24, SpawnSparkType_Default);
-			CheckExp(projectile);
-			
-			if(ValidIONum(projectile.source)) {
-				ARX_NPC_SpawnAudibleSound(v0, entities[projectile.source]);
+			if(!result) {
+				ARX_THROWN_OBJECT_Kill(i);
 			}
 			
-			projectile.flags &= ~ATO_MOVING;
-			projectile.velocity = 0.f;
-			
-			if(ValidIONum(projectile.source)) {
-				ARX_SOUND_PlayCollision("dagger", "earth", 1.f, 1.f, v0, entities[projectile.source]);
-			}
-			
-			projectile.position = original_pos;
-			
-			ARX_THROWN_OBJECT_Kill(i);
 			return;
 		}
 		
@@ -543,8 +475,6 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 					
 				}
 				
-				// Need to deal damages !
-				projectile.flags &= ~ATO_MOVING;
 				projectile.velocity = 0.f;
 				
 				need_kill = true;

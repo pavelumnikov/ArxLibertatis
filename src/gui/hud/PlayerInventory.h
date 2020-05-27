@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2015-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -20,6 +20,7 @@
 #ifndef ARX_GUI_HUD_PLAYERINVENTORY_H
 #define ARX_GUI_HUD_PLAYERINVENTORY_H
 
+#include "game/Inventory.h"
 #include "gui/hud/HudCommon.h"
 #include "math/Vector.h"
 
@@ -68,6 +69,7 @@ public:
 	void update();
 	void updateRect();
 	bool updateInput();
+	void updateCombineFlags(Entity * source);
 	void draw();
 	
 	void nextBag();
@@ -78,10 +80,10 @@ public:
 	Entity * getObj(const Vec2s & pos);
 	
 	void dropEntity();
-	void dragEntity(Entity * io, const Vec2s & pos);
+	void dragEntity(Entity * io);
 	
 	void close();
-	bool isClosing();
+	bool isClosing() const;
 	void resetPos();
 	
 private:

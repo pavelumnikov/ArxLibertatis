@@ -20,6 +20,7 @@
 #ifndef ARX_GUI_HUD_SECONDARYINVENTORY_H
 #define ARX_GUI_HUD_SECONDARYINVENTORY_H
 
+#include "game/Inventory.h"
 #include "gui/hud/HudCommon.h"
 #include "math/Vector.h"
 
@@ -80,7 +81,9 @@ public:
 	void init();
 	void update();
 	void updateRect();
+	void updateCombineFlags(Entity * source);
 	void draw();
+	void drawItemPrice(float scale);
 	
 	void updateInputButtons();
 	
@@ -91,11 +94,20 @@ public:
 	Entity * getObj(const Vec2s & pos);
 	
 	void dropEntity();
-	bool dragEntity(Entity * io, const Vec2s & pos);
+	void dragEntity(Entity * io);
 	
+	void open(Entity * container);
 	void close();
 	
+	bool isVisible();
+	bool isOpen();
+	bool isOpen(Entity * container);
+	
+	void clear(Entity * container);
+	
 	void updateFader();
+	
+	void takeAllItems();
 	
 	enum Fade {
 		Fade_left = -1,

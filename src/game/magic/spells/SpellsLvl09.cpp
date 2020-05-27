@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2014-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -211,7 +211,7 @@ void SummonCreatureSpell::Update() {
 			if(io) {
 				RestoreInitialIOStatusOfIO(io);
 				
-				io->summoner = m_caster;
+				io->_npcdata->summoner = m_caster;
 				
 				io->scriptload = 1;
 				
@@ -459,8 +459,7 @@ void IncinerateSpell::Update() {
 	
 }
 
-Vec3f IncinerateSpell::getPosition() {
-	
+Vec3f IncinerateSpell::getPosition() const {
 	return getTargetPosition();
 }
 

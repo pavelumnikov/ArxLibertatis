@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -92,7 +92,7 @@ public:
 	template <class Vertex>
 	void beforeDraw() { flushState(); selectTrasform<Vertex>(); }
 	
-	bool hasTextureNPOT() { return m_hasTextureNPOT; }
+	bool hasTextureNPOT() const { return m_hasTextureNPOT; }
 	bool hasSizedTextureFormats() const { return m_hasSizedTextureFormats; }
 	bool hasIntensityTextures() const { return m_hasIntensityTextures; }
 	bool hasBGRTextureTransfer() const { return m_hasBGRTextureTransfer; }
@@ -154,6 +154,16 @@ private:
 	bool m_hasClearDepthf;
 	bool m_hasVertexFogCoordinate;
 	bool m_hasSampleShading;
+	
+	enum GLTransformMode {
+		GL_UnsetTransform,
+		GL_NoTransform,
+		GL_ModelViewProjectionTransform
+	};
+	
+	GLTransformMode m_currentTransform;
+	glm::mat4x4 m_projection;
+	glm::mat4x4 m_view;
 	
 };
 

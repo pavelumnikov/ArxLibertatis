@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -325,18 +325,15 @@ namespace ARX_ANONYMOUS_NAMESPACE {
  * in release builds.
  */
 #ifdef ARX_DEBUG
-	#define arx_assume_impl(Expression) arx_assert(Expression)
+	#define arx_assume(Expression) arx_assert(Expression)
 #elif ARX_HAVE_BUILTIN_ASSUME
-	#define arx_assume_impl(Expression) __builtin_assume(Expression)
+	#define arx_assume(Expression) __builtin_assume(Expression)
 #elif ARX_HAVE_ASSUME
-	#define arx_assume_impl(Expression) __assume(Expression)
+	#define arx_assume(Expression) __assume(Expression)
 #elif ARX_HAVE_BUILTIN_UNREACHABLE
-	#define arx_assume_impl(Expression) ((Expression) ? (void)0 : __builtin_unreachable())
-#endif
-#ifdef arx_assume_impl
-#define arx_assume(Expression) arx_assume_impl(Expression)
+	#define arx_assume(Expression) ((Expression) ? (void)0 : __builtin_unreachable())
 #else
-#define arx_assume(Expression) ARX_DISCARD(Expression)
+	#define arx_assume(Expression) ARX_DISCARD(Expression)
 #endif
 
 /*!
@@ -365,13 +362,22 @@ namespace ARX_ANONYMOUS_NAMESPACE {
  * If a switch is supposed to handle all values of an enum it is important to not add a default label
  * for the arx_unreachable() macro but instead place it after the switch. This allows tools to warn when
  * ther is an enum value added that is not handled in the switch.
+ *
+ * While some compilers may use unreachable branches to make assumptions about variables, this should 
+ * not be relied upon. To teach the optimizer a fact, use
+ * \code
+ * arx_assume(expression)
+ * \endcode
  */
 #ifdef ARX_DEBUG
 	#define arx_unreachable() arx_assert_impl(false, "unreachable code", NULL)
 #elif ARX_HAVE_BUILTIN_UNREACHABLE
 	#define arx_unreachable() __builtin_unreachable()
-#elif defined(arx_assume_impl)
-	#define arx_unreachable() arx_assume_impl(false)
+#elif ARX_HAVE_BUILTIN_ASSUME
+	#define arx_unreachable() __builtin_assume(0)
+#elif ARX_HAVE_ASSUME
+	#define arx_unreachable() __assume(0)
+#elif ARX_HAVE_BUILTIN_UNREACHABLE
 #else
 	#define arx_unreachable() do { } while(true)
 #endif

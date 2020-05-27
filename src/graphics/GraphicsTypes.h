@@ -133,7 +133,6 @@ struct EERIEPOLY {
 	float transval;
 	float area;
 	short room;
-	short misc;
 	unsigned short uslInd[4];
 	
 	EERIEPOLY()
@@ -147,7 +146,6 @@ struct EERIEPOLY {
 		, transval(0)
 		, area(0)
 		, room(0)
-		, misc(0)
 	{
 		nrml[0] = nrml[1] = nrml[2] = nrml[3] = Vec3f(0.f);
 		uslInd[0] = uslInd[1] = uslInd[2] = uslInd[3] = 0;
@@ -166,35 +164,18 @@ struct EERIE_FACE {
 	
 	float transval;
 	Vec3f norm;
-	Vec3f nrmls[IOPOLYVERT];
-	float temp;
 	
-	short ou[IOPOLYVERT];
-	short ov[IOPOLYVERT];
 };
 
 struct EERIE_ACTIONLIST {
 	
 	std::string name;
 	ActionPoint idx;
-	long act;
-	long sfx;
 	
 	EERIE_ACTIONLIST()
 		: idx(0)
-		, act(0)
-		, sfx(0)
 	{ }
 	
-};
-
-struct CUB3D {
-	float xmin;
-	float xmax;
-	float ymin;
-	float ymax;
-	float zmin;
-	float zmax;
 };
 
 struct EERIE_LINKED {
@@ -229,33 +210,16 @@ struct EERIE_FASTACCESS {
 struct EERIE_3DOBJ {
 	
 	EERIE_3DOBJ()
-		: pos(0.f)
-		, point0(0.f)
-		, origin(0)
-		, quat(quat_identity())
+		: origin(0)
 		, pbox(NULL)
-		, sdata(false)
 		, m_skeleton(NULL)
-		
-	{
-		// TODO Make default constructor possible
-		cub.xmin = 0;
-		cub.xmax = 0;
-		cub.ymin = 0;
-		cub.ymax = 0;
-		cub.zmin = 0;
-		cub.zmax = 0;
-	}
+	{ }
 	
 	void clear();
 	
 	~EERIE_3DOBJ();
 	
-	std::string name;
 	res::path file;
-	Vec3f pos;
-	Vec3f point0;
-	Anglef angle;
 	size_t origin;
 	std::vector<Vec3f> vertexlocal;
 	std::vector<EERIE_VERTEX> vertexlist;
@@ -270,12 +234,9 @@ struct EERIE_3DOBJ {
 	std::vector<TextureContainer *> texturecontainer;
 
 	std::vector<res::path> originaltextures;
-	CUB3D cub;
-	glm::quat quat;
 	std::vector<EERIE_LINKED> linked;
 	
 	PHYSICS_BOX_DATA * pbox;
-	bool sdata;
 	EERIE_FASTACCESS fastaccess;
 	Skeleton * m_skeleton;
 	
@@ -307,7 +268,6 @@ struct EERIE_PORTALS {
 	size_t room_1; // facing normal
 	size_t room_2;
 	short useportal;
-	short paddy;
 };
 
 struct EP_DATA {

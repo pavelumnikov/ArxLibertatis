@@ -102,11 +102,17 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 class TextureContainer;
 
 struct DAMAGE_INFO {
-	short exist;
+	
+	bool exist;
 	GameInstant start_time;
 	GameInstant lastupd;
 	
 	DamageParameters params;
+	
+	DAMAGE_INFO()
+		: exist(false)
+	{ }
+	
 };
 
 const size_t MAX_DAMAGES = 200;
@@ -129,7 +135,7 @@ DamageHandle DamageCreate(const DamageParameters & params) {
 
 void DamageRequestEnd(DamageHandle handle) {
 	if(handle.handleData() >= 0) {
-		g_damages[handle.handleData()].exist = 0;
+		g_damages[handle.handleData()].exist = false;
 	}
 }
 
@@ -334,7 +340,7 @@ float ARX_DAMAGES_DamagePlayer(float dmg, DamageType type, EntityHandle source) 
 					Entity * ioo = entities[handle];
 					
 					if(ioo && (ioo->ioflags & IO_NPC)) {
-						if(ioo->targetinfo == EntityHandle(TARGET_PLAYER)) {
+						if(ioo->targetinfo == EntityHandle_Player) {
 							std::string killer;
 							if(source == EntityHandle_Player) {
 								killer = "player";
@@ -612,6 +618,7 @@ void ARX_DAMAGES_ForceDeath(Entity & io_dead, Entity * io_killer) {
 		if(io_dead._npcdata->weapon) {
 			Entity * ioo = io_dead._npcdata->weapon;
 			if(ValidIOAddress(ioo)) {
+				removeFromInventories(ioo);
 				ioo->show = SHOW_FLAG_IN_SCENE;
 				ioo->ioflags |= IO_NO_NPC_COLLIDE;
 				ioo->pos = ioo->obj->vertexWorldPositions[ioo->obj->origin].v;
@@ -757,7 +764,7 @@ float ARX_DAMAGES_DamageNPC(Entity * io, float dmg, EntityHandle source, bool is
 		io->ouch_time = g_gameTime.now();
 		
 		ScriptParameters parameters = getOuchEventParameter(io);
-		if(sender && sender->summoner == EntityHandle_Player) {
+		if(sender && (sender->ioflags & IO_NPC) && sender->_npcdata->summoner == EntityHandle_Player) {
 			sender = entities.player();
 			parameters.push_back("summoned");
 		}
@@ -833,7 +840,7 @@ float ARX_DAMAGES_DamageNPC(Entity * io, float dmg, EntityHandle source, bool is
 				}
 				
 				Entity * sender = ValidIONum(source) ? entities[source] : NULL;
-				if(sender && sender->summoner == EntityHandle_Player) {
+				if(sender && (sender->ioflags & IO_NPC) && sender->_npcdata->summoner == EntityHandle_Player) {
 					sender = entities.player();
 					parameters.push_back("summoned");
 				}
@@ -866,7 +873,9 @@ float ARX_DAMAGES_DamageNPC(Entity * io, float dmg, EntityHandle source, bool is
 			if(ValidIONum(source)) {
 				long xp = io->_npcdata->xpvalue;
 				ARX_DAMAGES_ForceDeath(*io, entities[source]);
-				if(source == EntityHandle_Player || entities[source]->summoner == EntityHandle_Player) {
+				if(source == EntityHandle_Player
+				   || ((entities[source]->ioflags & IO_NPC)
+				       && entities[source]->_npcdata->summoner == EntityHandle_Player)) {
 					ARX_PLAYER_Modify_XP(xp);
 				}
 			} else {
@@ -880,7 +889,7 @@ float ARX_DAMAGES_DamageNPC(Entity * io, float dmg, EntityHandle source, bool is
 }
 
 void ARX_DAMAGES_Reset() {
-	memset(g_damages, 0, sizeof(DAMAGE_INFO) * MAX_DAMAGES);
+	std::fill_n(g_damages, boost::size(g_damages), DAMAGE_INFO());
 }
 
 extern TextureContainer * TC_fire2;

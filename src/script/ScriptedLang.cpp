@@ -146,7 +146,7 @@ public:
 		
 		float t = Random::getf(0.f, 100.f);
 		if(chance < t) {
-			context.skipStatement();
+			context.skipBlock();
 		}
 		
 		return Success;
@@ -344,7 +344,7 @@ public:
 			
 		} else if(zone) { // SEND EVENT TO ALL OBJECTS IN A ZONE
 			
-			ARX_PATH * ap = ARX_PATH_GetAddressByName(zonename);
+			Zone * ap = getZoneByName(zonename);
 			if(!ap) {
 				ScriptWarning << "unknown zone: " << zonename;
 				return Failed;
@@ -415,7 +415,7 @@ class SetEventCommand : public Command {
 	
 public:
 	
-	SetEventCommand() : Command("setevent") { }
+	SetEventCommand() : Command("setevent", AnyEntity) { }
 	
 	Result execute(Context & context) {
 		
@@ -794,7 +794,7 @@ public:
 		
 		if(t1 != t2) {
 			ScriptWarning << "incompatible types: \"" << left << "\" (" << (t1 == TYPE_TEXT ? "text" : "number") << ") and \"" << right << "\" (" << (t2 == TYPE_TEXT ? "text" : "number") << ')';
-			context.skipStatement();
+			context.skipBlock();
 			return Failed;
 		}
 		
@@ -808,7 +808,7 @@ public:
 		}
 		
 		if(!condition) {
-			context.skipStatement();
+			context.skipBlock();
 		}
 		
 		return Success;
@@ -828,7 +828,7 @@ public:
 		
 		DebugScript("");
 		
-		context.skipStatement();
+		context.skipBlock();
 		
 		return Success;
 	}

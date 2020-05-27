@@ -82,6 +82,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "gui/Speech.h"
 #include "gui/Interface.h"
 #include "gui/book/Book.h"
+#include "gui/hud/SecondaryInventory.h"
 
 #include "graphics/Draw.h"
 #include "graphics/Math.h"
@@ -125,16 +126,25 @@ static Entity * AddCamera(const res::path & classPath, EntityInstance instance =
 static Entity * AddMarker(const res::path & classPath, EntityInstance instance = -1);
 
 float STARTED_ANGLE = 0;
-void Set_DragInter(Entity * io)
-{
-	if(io != DRAGINTER)
+void Set_DragInter(Entity * io) {
+	
+	if(io != DRAGINTER) {
 		STARTED_ANGLE = player.angle.getYaw();
-
+	}
+	
+	if(io) {
+		g_draggedItemPreviousPosition = removeFromInventories(io);
+		io->show = SHOW_FLAG_IN_SCENE;
+	} else {
+		g_draggedItemPreviousPosition = InventoryPos();
+	}
+	
 	DRAGINTER = io;
-
+	
 	if(io && io->obj && io->obj->pbox) {
 		io->obj->pbox->active = 0;
 	}
+	
 }
 
 // Checks if an IO index number is valid
@@ -180,7 +190,7 @@ long ARX_INTERACTIVE_GetSellValue(Entity * item, Entity * shop, long count) {
 
 static void ARX_INTERACTIVE_ForceIOLeaveZone(Entity * io) {
 	
-	ARX_PATH * op = io->inzone;
+	Zone * op = io->inzone;
 	if(!op || op->controled.empty()) {
 		return;
 	}
@@ -249,6 +259,7 @@ void ARX_INTERACTIVE_Attach(EntityHandle n_source, EntityHandle n_target,
 		return;
 	}
 	
+	removeFromInventories(source);
 	source->show = SHOW_FLAG_LINKED;
 	EERIE_LINKEDOBJ_UnLinkObjectFromObject(target->obj, source->obj);
 	EERIE_LINKEDOBJ_LinkObjectToObject(target->obj,
@@ -263,6 +274,7 @@ void ARX_INTERACTIVE_Detach(EntityHandle n_source, EntityHandle n_target)
 	if(!source || !target)
 		return;
 
+	removeFromInventories(source);
 	source->show = SHOW_FLAG_IN_SCENE;
 	EERIE_LINKEDOBJ_UnLinkObjectFromObject(target->obj, source->obj);
 }
@@ -394,6 +406,7 @@ void IO_UnlinkAllLinkedObjects(Entity * io) {
 		linked->soundtime = 0;
 		linked->soundcount = 0;
 		linked->gameFlags |= GFLAG_NO_PHYS_IO_COL;
+		removeFromInventories(io);
 		linked->show = SHOW_FLAG_IN_SCENE;
 		linked->no_collide = io->index();
 		
@@ -643,7 +656,9 @@ void CleanScriptLoadedIO() {
 		if(io) {
 			if(io->scriptload) {
 				delete io;
-			} else {
+			} else if(io->show != SHOW_FLAG_IN_INVENTORY
+			          && io->show != SHOW_FLAG_ON_PLAYER
+			          && io->show != SHOW_FLAG_LINKED) {
 				// TODO why not jus leave it as is?
 				io->show = SHOW_FLAG_IN_SCENE;
 			}
@@ -774,20 +789,19 @@ static void ARX_INTERACTIVE_ClearIODynData_II(Entity * io) {
 	delete io->tweakerinfo;
 	io->tweakerinfo = NULL;
 	
+	g_secondaryInventoryHud.clear(io);
+	
 	if(io->inventory != NULL) {
 		INVENTORY_DATA * id = io->inventory;
 		
 		for(long nj = 0; nj < id->m_size.y; nj++) {
 			for(long ni = 0; ni < id->m_size.x; ni++) {
-				if(id->slot[ni][nj].io != NULL) {
+				if(id->slot[ni][nj].io) {
 					id->slot[ni][nj].io->destroy();
-					id->slot[ni][nj].io = NULL;
 				}
+				arx_assert(id->slot[ni][nj].io == NULL);
+				arx_assert(id->slot[ni][nj].show == false);
 			}
-		}
-		
-		if(TSecondaryInventory && TSecondaryInventory->io == io) {
-			TSecondaryInventory = NULL;
 		}
 		
 		delete io->inventory;
@@ -918,10 +932,10 @@ void RestoreInitialIOStatusOfIO(Entity * io)
 		io->physics.cyl.radius = io->original_radius;
 		io->physics.cyl.height = io->original_height;
 		io->fall = 0;
+		removeFromInventories(io);
 		io->show = SHOW_FLAG_IN_SCENE;
 		io->targetinfo = EntityHandle(TARGET_NONE);
 		io->spellcast_data.castingspell = SPELL_NONE;
-		io->summoner = EntityHandle();
 		io->spark_n_blood = 0;
 
 		if(io->ioflags & IO_NPC) {
@@ -962,6 +976,7 @@ void RestoreInitialIOStatusOfIO(Entity * io)
 			io->_npcdata->npcflags = 0;
 			io->_npcdata->backstab_skill = 0;
 			io->_npcdata->fDetect = -1;
+			io->_npcdata->summoner = EntityHandle();
 		}
 		
 		if(io->ioflags & IO_ITEM) {
@@ -997,9 +1012,14 @@ void ARX_INTERACTIVE_TWEAK_Icon(Entity * io, const res::path & s1) {
 	}
 	
 	if(tc) {
+		InventoryPos pos = removeFromInventories(io);
 		io->m_inventorySize = inventorySizeFromTextureSize(tc->size());
 		io->m_icon = tc;
+		if(pos) {
+			insertIntoInventoryAtNoEvent(io, pos);
+		}
 	}
+	
 }
 
 // Be careful with this func...
@@ -1012,7 +1032,11 @@ Entity * CloneIOItem(Entity * src) {
 	
 	SendInitScriptEvent(dest);
 	dest->m_icon = src->m_icon;
+	InventoryPos pos = removeFromInventories(dest);
 	dest->m_inventorySize = src->m_inventorySize;
+	if(pos) {
+		insertIntoInventoryAtNoEvent(dest, pos);
+	}
 	delete dest->obj;
 	dest->obj = Eerie_Copy(src->obj);
 	CloneLocalVars(dest, src);
@@ -1091,6 +1115,7 @@ void ARX_INTERACTIVE_TeleportBehindTarget(Entity * io) {
 	timer.start = g_gameTime.now();
 	timer.count = 1;
 	
+	removeFromInventories(io);
 	io->show = SHOW_FLAG_TELEPORTING;
 	AddRandomSmoke(*io, 10);
 	ARX_PARTICLES_Add_Smoke(io->pos, 3, 20);
@@ -1284,6 +1309,7 @@ void Prepare_SetWeapon(Entity * io, const res::path & temp) {
 		
 		SendInitScriptEvent(ioo);
 		io->_npcdata->weapontype = ioo->type_flags;
+		removeFromInventories(ioo);
 		ioo->show = SHOW_FLAG_LINKED;
 		ioo->scriptload = 2;
 		
@@ -1299,7 +1325,7 @@ void LinkObjToMe(Entity * io, Entity * io2, const std::string & attach) {
 	if(!io || !io2)
 		return;
 	
-	RemoveFromAllInventories(io2);
+	removeFromInventories(io2);
 	io2->show = SHOW_FLAG_LINKED;
 	EERIE_LINKEDOBJ_LinkObjectToObject(io->obj, io2->obj, attach, attach, io2);
 }
@@ -1885,10 +1911,6 @@ bool IsEquipedByPlayer(const Entity * io)
 extern long LOOKING_FOR_SPELL_TARGET;
 Entity * InterClick(const Vec2s & pos) {
 	
-	if(InInventoryPos(pos)) {
-		return NULL;
-	}
-
 	float dist_Threshold;
 
 	if (LOOKING_FOR_SPELL_TARGET)
@@ -2023,29 +2045,19 @@ void UpdateCameras() {
 					SendIOScriptEvent(NULL, io, SM_WAYPOINT, waypoint);
 					SendIOScriptEvent(NULL, io, ScriptEventName("waypoint" + waypoint));
 					SendIOScriptEvent(NULL, io, SM_PATHEND);
-					aup->lastWP = last;
 				} else {
-					last--;
-					long _from = aup->lastWP;
-					long _to = last;
-
-					if(_from > _to)
-						_from = -1;
-
-					if(_from < 0)
-						_from = -1;
-
-					long ii = _from + 1;
-
+					long ii = aup->lastWP + 1;
+					if(ii < 0 || ii > last) {
+						ii = 0;
+					}
 					std::string waypoint = boost::lexical_cast<std::string>(ii);
 					SendIOScriptEvent(NULL, io, SM_WAYPOINT, waypoint);
 					SendIOScriptEvent(NULL, io, ScriptEventName("waypoint" + waypoint));
 					if(size_t(ii) == aup->path->pathways.size()) {
 						SendIOScriptEvent(NULL, io, SM_PATHEND);
 					}
-					
-					aup->lastWP = last + 1;
 				}
+				aup->lastWP = last;
 			}
 
 			if(io->damager_damages > 0 && io->show == SHOW_FLAG_IN_SCENE) {
@@ -2375,6 +2387,7 @@ void ARX_INTERACTIVE_ActivatePhysics(EntityHandle t)
 		io->obj->pbox->active = 1;
 		io->obj->pbox->stopcount = 0;
 		Vec3f fallvector = Vec3f(0.0f, 0.000001f, 0.f);
+		removeFromInventories(io);
 		io->show = SHOW_FLAG_IN_SCENE;
 		io->soundtime = 0;
 		io->soundcount = 0;

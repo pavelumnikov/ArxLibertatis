@@ -15,6 +15,8 @@ option(SET_NOISY_WARNING_FLAGS "Enable noisy compiler warnings" OFF)
 option(SET_OPTIMIZATION_FLAGS "Adjust compiler optimization flags" ON)
 
 set(conservative_warnings)
+set(enable_rtti)
+set(disable_libstdcxx_debug)
 
 if(MSVC)
 	
@@ -107,6 +109,7 @@ if(MSVC)
 			string(REGEX REPLACE "/GR( |$)" "" ${flag_var} "${${flag_var}}")
 			set(${flag_var} "${${flag_var}} /GR-")
 		endforeach(flag_var)
+		list(APPEND enable_rtti /GR)
 		
 	endif()
 	
@@ -221,7 +224,7 @@ else(MSVC)
 		add_cxxflag("-Wreserved-id-macro")
 		add_cxxflag("-Wshift-overflow")
 		add_cxxflag("-Wstrict-null-sentinel")
-		add_cxxflag("-Wstringop-overflow=4")
+		add_cxxflag("-Wstringop-overflow=2")
 		add_cxxflag("-Wundef")
 		add_cxxflag("-Wunused-const-variable=1")
 		add_cxxflag("-Wunused-macros")
@@ -231,6 +234,11 @@ else(MSVC)
 		add_cxxflag("-Wbool-conversion") # part of -Wconversion
 		add_cxxflag("-Wfloat-conversion") # part of -Wconversion
 		add_cxxflag("-Wstring-conversion") # part of -Wconversion
+		add_cxxflag("-Wenum-conversion") # part of -Wconversion
+		
+		if(NOT UNITY_BUILD)
+			add_cxxflag("-Wheader-hygiene")
+		endif()
 		
 		if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
 			add_cxxflag("-Wsign-promo")
@@ -257,7 +265,12 @@ else(MSVC)
 			add_cxxflag("-Wduplicated-branches")
 		endif()
 		
-		add_ldflag("-Wl,--no-undefined")
+		if(DEBUG_EXTRA)
+			# Address sanitizer cannot be linked into shared libraries so there will be undefined symbols
+			# This is by design as asan needs to be preloaded for shared libraries
+		else()
+			add_ldflag("-Wl,--no-undefined")
+		endif()
 		
 		if(SET_NOISY_WARNING_FLAGS)
 			
@@ -277,8 +290,15 @@ else(MSVC)
 			add_cxxflag("-Wpadded")
 			add_cxxflag("-Wunsafe-loop-optimizations")
 			
+			# Levels 3 and above may result in warnings for safe code
+			add_cxxflag("-Wstringop-overflow=4")
+			
 			if(NOT DEBUG_EXTRA OR NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 				add_ldflag("-Wl,--detect-odr-violations")
+			endif()
+			
+			if(UNITY_BUILD)
+				add_cxxflag("-Wunused-const-variable=2")
 			endif()
 			
 		else()
@@ -340,14 +360,15 @@ else(MSVC)
 		add_cxxflag("-fcatch-undefined-behavior")
 		add_cxxflag("-fstack-protector-all")
 		add_cxxflag("-fsanitize=address")
-		add_cxxflag("-fsanitize=thread")
+		# add_cxxflag("-fsanitize=thread") does not work together with -fsanitize=address
 		add_cxxflag("-fsanitize=leak")
+		add_cxxflag("-fsanitize=undefined")
 		if(IS_LIBCXX)
 			add_definitions(-D_LIBCPP_DEBUG=1) # libc++
 			# libc++'s debug checks fail with -fsanitize=undefined
 		else()
 			add_definitions(-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC) # libstdc++
-			add_cxxflag("-fsanitize=undefined")
+			set(disable_libstdcxx_debug "-U_GLIBCXX_DEBUG -U_GLIBCXX_DEBUG_PEDANTIC")
 		endif()
 	endif(DEBUG_EXTRA)
 	
@@ -358,6 +379,9 @@ else(MSVC)
 	if(SET_OPTIMIZATION_FLAGS)
 		
 		add_cxxflag("-fno-rtti")
+		if(FLAG_FOUND)
+			list(APPEND enable_rtti "-frtti")
+		endif()
 		
 		if(MACOS)
 			# TODO For some reason this check succeeds on macOS, but then

@@ -14,7 +14,7 @@
 #  - Allow #ifdef BOOST_PP_IS_ITERATING + #endif in place of header guards
 #  - C++ source files are named .cpp, not .cc
 #
-# Copyright (c) 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+# Copyright (c) 2011-2020 Arx Libertatis Team (see the AUTHORS file)
 # Copyright (c) 2009 Google Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -1252,7 +1252,6 @@ threading_list = (
     ('gmtime(', 'gmtime_r('),
     ('localtime(', 'localtime_r('),
     ('rand(', 'rand_r('),
-    ('readdir(', 'readdir_r('),
     ('strtok(', 'strtok_r('),
     ('ttyname(', 'ttyname_r('),
     )

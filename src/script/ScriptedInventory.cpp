@@ -54,6 +54,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "game/NPC.h"
 #include "graphics/Math.h"
 #include "graphics/data/Mesh.h"
+#include "gui/hud/SecondaryInventory.h"
 #include "io/resource/ResourcePath.h"
 #include "scene/Interactive.h"
 #include "scene/GameSound.h"
@@ -107,10 +108,13 @@ class InventoryCommand : public Command {
 				return;
 			}
 			
+			g_secondaryInventoryHud.clear(io);
+			
 			for(long y = 0; y < id->m_size.y; y++) {
 				for(long x = 0; x < id->m_size.x; x++) {
 					Entity * item = id->slot[x][y].io;
-					if(item && id->slot[x][y].show) {
+					if(item) {
+						removeFromInventories(item);
 						// Delay destruction of the object to avoid invalid references
 						if(item->ioflags & IO_ITEM) {
 							item->_itemdata->count = 1;
@@ -120,7 +124,7 @@ class InventoryCommand : public Command {
 						item->show = SHOW_FLAG_MEGAHIDE;
 						item->ioflags |= IO_FREEZESCRIPT;
 					}
-					id->slot[x][y].io = NULL;
+					arx_assert(id->slot[x][y].io == NULL);
 				}
 			}
 			
@@ -198,8 +202,6 @@ class InventoryCommand : public Command {
 				ScriptWarning << "unknown target: " << target;
 				return Failed;
 			}
-			
-			RemoveFromAllInventories(t);
 			
 			giveToPlayer(t);
 			
@@ -283,14 +285,11 @@ class InventoryCommand : public Command {
 			
 			if(ARX_EQUIPMENT_IsPlayerEquip(t)) {
 				ARX_EQUIPMENT_UnEquip(entities.player(), t, 1);
-			} else {
-				RemoveFromAllInventories(t);
 			}
 			
 			t->scriptload = 0;
-			t->show = SHOW_FLAG_IN_INVENTORY;
 			
-			if(!CanBePutInSecondaryInventory(context.getEntity()->inventory, t)) {
+			if(!insertIntoInventory(t, context.getEntity())) {
 				PutInFrontOfPlayer(t);
 			}
 			
@@ -347,7 +346,6 @@ class InventoryCommand : public Command {
 			LASTSPAWNED = ioo;
 			ioo->scriptload = 1;
 			SendInitScriptEvent(ioo);
-			ioo->show = SHOW_FLAG_IN_INVENTORY;
 			
 			if(multi) {
 				if(ioo->ioflags & IO_GOLD) {
@@ -358,7 +356,7 @@ class InventoryCommand : public Command {
 				}
 			}
 			
-			if(!CanBePutInSecondaryInventory(context.getEntity()->inventory, ioo)) {
+			if(!insertIntoInventory(ioo, context.getEntity())) {
 				PutInFrontOfPlayer(ioo);
 			}
 			
@@ -377,8 +375,8 @@ class InventoryCommand : public Command {
 			
 			DebugScript("");
 			
-			if(SecondaryInventory != context.getEntity()->inventory) {
-				SecondaryInventory = context.getEntity()->inventory;
+			if(context.getEntity()->inventory && !g_secondaryInventoryHud.isOpen(context.getEntity())) {
+				g_secondaryInventoryHud.open(context.getEntity());
 				ARX_SOUND_PlayInterface(g_snd.BACKPACK);
 			}
 			
@@ -397,8 +395,8 @@ class InventoryCommand : public Command {
 			
 			DebugScript("");
 			
-			if(context.getEntity()->inventory != NULL) {
-				SecondaryInventory = NULL;
+			if(context.getEntity()->inventory && g_secondaryInventoryHud.isOpen()) {
+				g_secondaryInventoryHud.close();
 				ARX_SOUND_PlayInterface(g_snd.BACKPACK);
 			}
 			

@@ -1,5 +1,5 @@
 /*
-* Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+* Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
 *
 * This file is part of Arx Libertatis.
 *
@@ -66,7 +66,7 @@ void CabalFx::disableSecondRingSet() {
 	m_hasTwoRingSets = false;
 }
 
-Color3f CabalFx::randomizeLightColor() {
+Color3f CabalFx::randomizeLightColor() const {
 	
 	Color3f color;
 	
@@ -85,6 +85,7 @@ Color3f CabalFx::randomizeLightColor() {
 	} else {
 		color.g = m_colorRangeLower.g;
 	}
+	
 	return color;
 }
 

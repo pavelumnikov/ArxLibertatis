@@ -736,7 +736,7 @@ ValueType getSystemVar(const script::Context & context, const std::string & name
 			
 			if(boost::starts_with(name, "^inzone_")) {
 				const char * zone = name.c_str() + 8;
-				ARX_PATH * ap = ARX_PATH_GetAddressByName(zone);
+				Zone * ap = getZoneByName(zone);
 				*lcontent = 0;
 				if(context.getEntity() && ap) {
 					if(ARX_PATH_IsPosInZone(ap, context.getEntity()->pos)) {
@@ -981,7 +981,8 @@ ValueType getSystemVar(const script::Context & context, const std::string & name
 			}
 			
 			if(boost::starts_with(name, "^player_zone")) {
-				txtcontent = (player.inzone) ? player.inzone->name : "none";
+				Zone * zone = entities.player()->inzone;
+				txtcontent = (zone ? zone->name : "none");
 				return TYPE_TEXT;
 			}
 			
@@ -1579,6 +1580,7 @@ static bool Manage_Specific_RAT_Timer(SCR_TIMER * st) {
 		ARX_PARTICLES_Add_Smoke(pos, 3, 20);
 		AddRandomSmoke(*io, 20);
 		MakeCoolFx(io->pos);
+		removeFromInventories(io);
 		io->show = SHOW_FLAG_IN_SCENE;
 		
 		for(long kl = 0; kl < 10; kl++) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -76,8 +76,6 @@ protected:
 			m_strDetailedErrorDescription = strDetailedError;
 		}
 	}
-	
-protected:
 	
 	ErrorReport & m_errorReport;
 	

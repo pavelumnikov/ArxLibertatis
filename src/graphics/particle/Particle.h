@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2017 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -77,15 +77,13 @@ public:
 	int iTexTime;
 	int iTexNum;
 	
-public:
-	
 	Particle();
 	~Particle();
 	
 	void Regen();
 	void Update(GameDuration delta);
 	
-	bool isAlive() {
+	bool isAlive() const {
 		return (m_age < m_timeToLive);
 	}
 	

@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -41,7 +41,7 @@ public:
 	void setWindowSize(const Vec2i & size);
 	bool setGamma(float gamma = 1.f);
 	bool initialize();
-	void tick();
+	void processEvents(bool waitForEvent);
 	
 	void showFrame();
 	

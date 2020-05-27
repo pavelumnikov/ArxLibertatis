@@ -1,4 +1,4 @@
-# Copyright 2014-2019 Arx Libertatis Team (see the AUTHORS file)
+# Copyright 2014-2020 Arx Libertatis Team (see the AUTHORS file)
 #
 # This file is part of Arx Libertatis.
 #
@@ -17,7 +17,6 @@
 
 from ctypes import (
     LittleEndianStructure,
-    Union,
     c_char,
     c_uint32,
     c_int16,
@@ -167,9 +166,14 @@ class DANAE_LS_PATHWAYS(LittleEndianStructure):
 import logging
 from ctypes import sizeof, create_string_buffer
 
-from collections import namedtuple
+from dataclasses import dataclass
+from typing import List, Tuple
 
-DlfData = namedtuple('DlfData', ['entities', 'fogs', 'paths'])
+@dataclass
+class DlfData:
+    entities: List[DANAE_LS_INTER]
+    fogs:     List[DANAE_LS_FOG]
+    paths:    List[Tuple[DANAE_LS_PATH, List[DANAE_LS_PATHWAYS]]]
 
 class DlfSerializer(object):
     def __init__(self, ioLib):

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2014-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -66,40 +66,6 @@ extern bool WILLRETURNTOFREELOOK;
 
 static const int indicatorVertSpacing = 30;
 static const int indicatorHorizSpacing = 20;
-
-static void DrawItemPrice(float scale) {
-	
-	Entity * temp = SecondaryInventory->io;
-	if(temp->ioflags & IO_SHOP) {
-		Vec2f pos = Vec2f(DANAEMouse);
-		pos += Vec2f(60, -10) * scale;
-		
-		if(g_secondaryInventoryHud.containsPos(DANAEMouse)) {
-			
-			long amount = ARX_INTERACTIVE_GetPrice(FlyingOverIO, temp);
-			// achat
-			float famount = amount - amount * player.m_skillFull.intuition * 0.005f;
-			// check should always be OK because amount is supposed positive
-			amount = checked_range_cast<long>(famount);
-
-			Color color = (amount <= player.gold) ? Color::green : Color::red;
-			
-			ARX_INTERFACE_DrawNumber(pos, amount, color, scale);
-		} else if(g_playerInventoryHud.containsPos(DANAEMouse)) {
-			long amount = ARX_INTERACTIVE_GetSellValue(FlyingOverIO, temp);
-			if(amount) {
-				Color color = Color::red;
-				
-				if(temp->shop_category.empty() ||
-				   FlyingOverIO->groups.find(temp->shop_category) != FlyingOverIO->groups.end()) {
-
-					color = Color::green;
-				}
-				ARX_INTERFACE_DrawNumber(pos, amount, color, scale);
-			}
-		}
-	}
-}
 
 HitStrengthGauge::HitStrengthGauge()
 	: m_emptyTex(NULL)
@@ -277,9 +243,8 @@ void BackpackIconGui::updateInput() {
 	
 	// Check for backpack Icon
 	if(m_rect.contains(Vec2f(DANAEMouse))) {
-		if(eeMouseUp1() && playerInventory.insert(DRAGINTER)) {
+		if(eeMouseUp1() && insertIntoInventory(DRAGINTER, entities.player())) {
 			ARX_SOUND_PlayInterface(g_snd.INVSTD);
-			Set_DragInter(NULL);
 		}
 	}
 	
@@ -291,7 +256,7 @@ void BackpackIconGui::updateInput() {
 		if(eeMouseDoubleClick1()) {
 			ARX_SOUND_PlayInterface(g_snd.BACKPACK, Random::getf(0.9f, 1.1f));
 			
-			playerInventory.optimize();
+			optimizeInventory(entities.player());
 			
 			flDelay = 0;
 		} else if(eeMouseDown1() || flDelay != 0) {
@@ -313,9 +278,10 @@ void BackpackIconGui::updateInput() {
 			}
 		} else if(eeMouseDown2()) {
 			g_playerBook.close();
-			ARX_INVENTORY_OpenClose(NULL);
+			g_secondaryInventoryHud.close();
 			
 			if(player.Interface & INTER_INVENTORYALL) {
+				ARX_SOUND_PlayInterface(g_snd.BACKPACK, Random::getf(0.9f, 1.1f));
 				g_playerInventoryHud.close();
 			} else {
 				if(player.Interface & INTER_INVENTORY) {
@@ -372,13 +338,16 @@ void StealIconGui::updateInput() {
 			cursorSetInteraction();
 			
 			if(eeMouseDown1()) {
-				ARX_INVENTORY_OpenClose(ioSteal);
+				g_secondaryInventoryHud.open(ioSteal);
 				
-				if(player.Interface & (INTER_INVENTORY | INTER_INVENTORYALL)) {
+				if(player.Interface & INTER_INVENTORYALL) {
+					ARX_SOUND_PlayInterface(g_snd.BACKPACK, Random::getf(0.9f, 1.1f));
+					g_playerInventoryHud.close();
+				} else if(player.Interface & INTER_INVENTORY) {
 					ARX_SOUND_PlayInterface(g_snd.BACKPACK, Random::getf(0.9f, 1.1f));
 				}
 				
-				if(SecondaryInventory) {
+				if(g_secondaryInventoryHud.isOpen(ioSteal)) {
 					SendIOScriptEvent(entities.player(), ioSteal, SM_STEAL);
 					bForceEscapeFreeLook = true;
 					lOldTruePlayerMouseLook = !TRUE_PLAYER_MOUSELOOK_ON;
@@ -532,7 +501,6 @@ void CurrentTorchIconGui::updateInput() {
 			
 			if(!DRAGINTER && !PLAYER_MOUSELOOK_ON && DRAGGING) {
 				Entity * io = player.torch;
-				player.torch->show = SHOW_FLAG_IN_SCENE;
 				
 				ARX_SOUND_PlaySFX(g_snd.TORCH_END);
 				ARX_SOUND_Stop(player.torch_loop);
@@ -561,7 +529,7 @@ void CurrentTorchIconGui::update() {
 	if(!isVisible())
 		return;
 	
-	if(g_note.isOpen() && TSecondaryInventory != NULL
+	if(g_note.isOpen() && g_secondaryInventoryHud.isVisible()
 	   && (g_note.type() == Note::BigNote || g_note.type() == Note::Book)) {
 		m_isActive = false;
 		return;
@@ -955,7 +923,7 @@ void PrecastSpellsGui::PrecastSpellIconSlot::updateInput() {
 	}
 }
 
-void PrecastSpellsGui::PrecastSpellIconSlot::draw() {
+void PrecastSpellsGui::PrecastSpellIconSlot::draw() const {
 	EERIEDrawBitmap(m_rect, 0.01f, m_tc, m_color);
 }
 
@@ -1055,12 +1023,13 @@ void ActiveSpellsGui::ActiveSpellIconSlot::updateInput(const Vec2f & mousePos) {
 	}
 }
 
-void ActiveSpellsGui::ActiveSpellIconSlot::draw() {
+void ActiveSpellsGui::ActiveSpellIconSlot::draw() const {
 	
 	if(!m_flicker)
 		return;
 	
 	EERIEDrawBitmap(m_rect, 0.01f, m_tc, m_color);
+	
 }
 
 ActiveSpellsGui::ActiveSpellsGui()
@@ -1376,7 +1345,9 @@ void PlayerInterfaceFader::update() {
 		bool bOk = true;
 		
 		if(TRUE_PLAYER_MOUSELOOK_ON) {
-			if(!(player.Interface & INTER_COMBATMODE) && player.doingmagic != 2 && !InInventoryPos(DANAEMouse)) {
+			if(!(player.Interface & INTER_COMBATMODE) && player.doingmagic != 2
+			   && !g_secondaryInventoryHud.containsPos(DANAEMouse)
+			   && !g_playerInventoryHud.containsPos(DANAEMouse)) {
 				bOk = false;
 				
 				PlatformInstant t = g_platformTime.frameStart();
@@ -1487,8 +1458,8 @@ void HudRoot::draw() {
 	if(FlyingOverIO  && !(player.Interface & INTER_COMBATMODE)
 	   && !GInput->actionPressed(CONTROLS_CUST_MAGICMODE)
 	   && (!PLAYER_MOUSELOOK_ON || config.input.autoReadyWeapon != AlwaysAutoReadyWeapon)) {
-		if((FlyingOverIO->ioflags & IO_ITEM) && !DRAGINTER && SecondaryInventory) {
-			DrawItemPrice(m_scale);
+		if((FlyingOverIO->ioflags & IO_ITEM) && !DRAGINTER) {
+			g_secondaryInventoryHud.drawItemPrice(m_scale);
 		}
 		cursorSetInteraction();
 	}

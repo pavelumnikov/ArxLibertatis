@@ -17,11 +17,11 @@
  * along with Arx Libertatis.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "tests/io/IniTest.h"
+#include "io/IniTest.h"
 
 #include "io/IniSection.h"
 
-CPPUNIT_TEST_SUITE_REGISTRATION(IniTest);
+CppUnit::AutoRegisterSuite<IniTest> g_registerIniTest;
 
 void IniTest::intTest() {
 	static const int INVALID = 999999;
@@ -32,6 +32,14 @@ void IniTest::intTest() {
 	
 	CPPUNIT_ASSERT_EQUAL( 1, IniKey("b", "1.4").getValue(INVALID));
 	CPPUNIT_ASSERT_EQUAL( 1, IniKey("b", "1,5").getValue(INVALID));
+	
+	CPPUNIT_ASSERT_EQUAL(1, IniKey("a", "true" ).getValue(INVALID));
+	CPPUNIT_ASSERT_EQUAL(0, IniKey("b", "false").getValue(INVALID));
+	
+	CPPUNIT_ASSERT_EQUAL(INVALID, IniKey("a", "True" ).getValue(INVALID));
+	CPPUNIT_ASSERT_EQUAL(INVALID, IniKey("b", "False").getValue(INVALID));
+	CPPUNIT_ASSERT_EQUAL(INVALID, IniKey("a", "TRUE" ).getValue(INVALID));
+	CPPUNIT_ASSERT_EQUAL(INVALID, IniKey("b", "FALSE").getValue(INVALID));
 }
 
 void IniTest::floatTest() {
@@ -59,5 +67,3 @@ void IniTest::boolTest() {
 	CPPUNIT_ASSERT_EQUAL(false, IniKey("a", "TRUE" ).getValue(false));
 	CPPUNIT_ASSERT_EQUAL(true,  IniKey("b", "FALSE").getValue(true));
 }
-
-

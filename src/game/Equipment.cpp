@@ -130,8 +130,6 @@ ItemType ARX_EQUIPMENT_GetObjectTypeFlag(const std::string & temp) {
 		case '2': return OBJECT_TYPE_2H;
 		case 'b': return OBJECT_TYPE_BOW;
 		case 's': return OBJECT_TYPE_SHIELD;
-		case 'f': return OBJECT_TYPE_FOOD;
-		case 'g': return OBJECT_TYPE_GOLD;
 		case 'r': return OBJECT_TYPE_RING;
 		case 'a': return OBJECT_TYPE_ARMOR;
 		case 'h': return OBJECT_TYPE_HELMET;
@@ -926,22 +924,9 @@ void ARX_EQUIPMENT_Equip(Entity * target, Entity * toequip)
 	if(!target || !toequip || target != entities.player())
 		return;
 
-	EntityHandle validid = EntityHandle();
+	EntityHandle validid = toequip->index();
 
-	for(size_t i = 0; i < entities.size(); i++) {
-		const EntityHandle handle = EntityHandle(i);
-		Entity * e = entities[handle];
-		
-		if(e == toequip) {
-			validid = handle;
-			break;
-		}
-	}
-
-	if(validid == EntityHandle())
-		return;
-
-	RemoveFromAllInventories(toequip);
+	removeFromInventories(toequip);
 	toequip->show = SHOW_FLAG_ON_PLAYER; // on player
 
 	if(toequip == DRAGINTER)

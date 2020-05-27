@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -60,7 +60,7 @@ public:
 	
 	virtual bool initialize() = 0;
 	
-	virtual void tick() = 0;
+	virtual void processEvents(bool waitForEvent) = 0;
 	
 	virtual void hide() = 0;
 	

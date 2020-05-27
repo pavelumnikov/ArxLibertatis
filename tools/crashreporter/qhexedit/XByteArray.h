@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -43,10 +43,10 @@ public:
 	
 	explicit XByteArray();
 	
-	int addressOffset();
+	int addressOffset() const;
 	void setAddressOffset(int offset);
 	
-	int addressWidth();
+	int addressWidth() const;
 	void setAddressWidth(int width);
 	
 	QByteArray & data();

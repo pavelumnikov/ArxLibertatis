@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2017-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -149,17 +149,16 @@ void CharacterCreation::render() {
 		if(!eeMousePressed1() && eeMouseUp1()) {
 			
 			m_cheatQuickGenButtonClickCount++;
-			int iSkin = player.skin;
 			ARX_SOUND_PlayMenu(g_snd.MENU_CLICK);
 			
+			unsigned char skin = player.skin;
 			if(bQuickGenFirstClick) {
 				ARX_PLAYER_MakeAverageHero();
 				bQuickGenFirstClick = false;
 			} else {
 				ARX_PLAYER_QuickGeneration();
 			}
-			
-			player.skin = checked_range_cast<char>(iSkin);
+			player.skin = skin;
 			
 		}
 		

@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -170,6 +170,13 @@ struct ARX_CHANGELEVEL_SAVE_GLOBALS {
 	f32 version;
 	s32 nb_globals;
 	s32 padding[256];
+};
+
+struct SavedPlayingAmbiance {
+	char name[256];
+	f32 volume;
+	s32 loop;
+	s32 type;
 };
 
 struct SavedMapMarkerData {
@@ -675,7 +682,7 @@ struct ARX_CHANGELEVEL_IO_SAVE {
 	u32 usepath_starttime;
 	u32 usepath_curtime;
 	s32 usepath_aupflags;
-	SavedVec3 usepath_initpos;
+	SavedVec3 usepath_initpos; // unused
 	s32 usepath_lastWP;
 	s32 padddd[64]; // new...
 	

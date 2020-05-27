@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2015-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -27,10 +27,12 @@
 
 #include <math.h>
 
+#include <boost/noncopyable.hpp>
+
 #include "platform/Architecture.h"
 #include "platform/WindowsUtils.h"
 
-class WindowsMain {
+class WindowsMain : private boost::noncopyable {
 	
 public:
 	

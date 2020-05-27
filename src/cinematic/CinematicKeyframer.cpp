@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -157,7 +157,7 @@ struct HasFrame {
 	
 	explicit HasFrame(int frame) : m_frame(frame) { }
 	
-	bool operator()(const CinematicKeyframe & key) {
+	bool operator()(const CinematicKeyframe & key) const {
 		return key.frame == m_frame;
 	}
 	
@@ -171,7 +171,7 @@ struct AfterFrame {
 	
 	explicit AfterFrame(int frame) : m_frame(frame) { }
 	
-	bool operator()(const CinematicKeyframe & key) {
+	bool operator()(const CinematicKeyframe & key) const {
 		return key.frame > m_frame;
 	}
 	

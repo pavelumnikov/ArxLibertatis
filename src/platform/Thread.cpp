@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2011-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -89,7 +89,7 @@ void Thread::start() {
 	param.sched_priority = m_priority;
 	pthread_attr_setschedparam(&attr, &param);
 	
-	pthread_create(&m_thread, NULL, entryPoint, this);
+	pthread_create(&m_thread, &attr, entryPoint, this);
 	
 	pthread_attr_destroy(&attr);
 	
@@ -118,7 +118,7 @@ void Thread::setPriority(Priority priority) {
 
 Thread::~Thread() { }
 
-void Thread::waitForCompletion() {
+void Thread::waitForCompletion() const {
 	if(m_started) {
 		pthread_join(m_thread, NULL);
 	}
@@ -279,7 +279,7 @@ void Thread::exit() {
 	ExitThread(0);
 }
 
-void Thread::waitForCompletion() {
+void Thread::waitForCompletion() const {
 	DWORD ret = WaitForSingleObject(m_thread, INFINITE);
 	arx_assert(ret == WAIT_OBJECT_0);
 	ARX_UNUSED(ret);
@@ -289,17 +289,6 @@ thread_id_type Thread::getCurrentThreadId() {
 	return GetCurrentThreadId();
 }
 
-#endif
-
-#ifndef _MM_DENORMALS_ZERO_MASK
-#define _MM_DENORMALS_ZERO_MASK  0x0040
-#endif
-#ifndef _MM_DENORMALS_ZERO_ON
-#define _MM_DENORMALS_ZERO_ON    0x0040
-#endif
-#ifndef _MM_SET_DENORMALS_ZERO_MODE
-#define _MM_SET_DENORMALS_ZERO_MODE(mode) \
-  _mm_setcsr((_mm_getcsr() & ~_MM_DENORMALS_ZERO_MASK) | (mode))
 #endif
 
 void Thread::disableFloatDenormals() {
@@ -319,6 +308,12 @@ void Thread::disableFloatDenormals() {
 	_MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON); // SSE
 	
 	#if ARX_HAVE_SSE3 || ARX_COMPILER_MSVC || ARX_HAVE_GET_CPUID
+	
+	#ifdef _MM_DENORMALS_ZERO_ON
+	#define ARX_SSE_DENORMALS_ZERO_ON _MM_DENORMALS_ZERO_ON
+	#else
+	#define ARX_SSE_DENORMALS_ZERO_ON 0x0040
+	#endif
 	
 	#if ARX_HAVE_SSE3
 	
@@ -351,14 +346,19 @@ void Thread::disableFloatDenormals() {
 		#endif
 		unsigned mxcsr_mask;
 		std::memcpy(&mxcsr_mask, buffer + 28, sizeof(mxcsr_mask));
-		have_daz = (mxcsr_mask & _MM_DENORMALS_ZERO_ON) != 0;
+		have_daz = (mxcsr_mask & ARX_SSE_DENORMALS_ZERO_ON) != 0;
 	}
 	#endif
 	
 	#endif // !ARX_HAVE_SSE3
 	
 	if(have_daz) {
-		_MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON); // SSE3 (and most SSE2 CPUs)
+		// SSE3 (and most SSE2 CPUs)
+		#if defined(_MM_SET_DENORMALS_ZERO_MODE)
+		_MM_SET_DENORMALS_ZERO_MODE(ARX_SSE_DENORMALS_ZERO_ON);
+		#else
+		_mm_setcsr(_mm_getcsr() | ARX_SSE_DENORMALS_ZERO_ON);
+		#endif
 	}
 	
 	#else

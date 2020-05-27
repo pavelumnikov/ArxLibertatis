@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2013-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -57,13 +57,13 @@
 #include "gui/Interface.h"
 #include "gui/Text.h"
 #include "gui/Menu.h"
+#include "gui/hud/PlayerInventory.h"
 #include "gui/hud/SecondaryInventory.h"
 
 enum ARX_INTERFACE_CURSOR_MODE
 {
 	CURSOR_UNDEFINED,
-	CURSOR_FIREBALLAIM,
-	CURSOR_INTERACTION_ON,
+ 	CURSOR_INTERACTION_ON,
 	CURSOR_REDIST,
 	CURSOR_COMBINEON,
 	CURSOR_COMBINEOFF,
@@ -145,6 +145,7 @@ void cursorTexturesInit() {
 bool Manage3DCursor(Entity * io, bool simulate, bool draginter) {
 	
 	arx_assert(io);
+	arx_assert(!locateInInventories(io));
 	
 	if(simulate && draginter) {
 		io->show = SHOW_FLAG_ON_PLAYER;
@@ -440,11 +441,12 @@ public:
 		
 	}
 	
-	TextureContainer * getCurrentTexture() {
+	TextureContainer * getCurrentTexture() const {
 		TextureContainer * tc = scursor[m_frame];
 		arx_assert(tc);
 		return tc;
 	}
+	
 };
 
 CursorAnimatedHand cursorAnimatedHand = CursorAnimatedHand();
@@ -507,7 +509,8 @@ void ARX_INTERFACE_RenderCursor(bool flag, bool draginter) {
 			ag = ag - 360;
 		
 		float drop_miny = float(g_size.center().y) - float(g_size.center().y) * ag * (1.f / 70);
-		if(DANAEMouse.y > drop_miny && DRAGINTER && !InInventoryPos(DANAEMouse) && !g_cursorOverBook) {
+		if(DANAEMouse.y > drop_miny && DRAGINTER && !g_secondaryInventoryHud.containsPos(DANAEMouse)
+		   && !g_playerInventoryHud.containsPos(DANAEMouse) && !g_cursorOverBook) {
 			
 			if(!Manage3DCursor(DRAGINTER, true, draginter)) {
 				CANNOT_PUT_IT_HERE = EntityMoveCursor_Throw;
@@ -591,13 +594,6 @@ void ARX_INTERFACE_RenderCursor(bool flag, bool draginter) {
 				mousePos.x -= 16.f;
 				mousePos.y -= 16.f;
 				break;
-			case CURSOR_FIREBALLAIM: {
-				surf = cursorTargetOn;
-				arx_assert(surf);
-				
-				mousePos = Vec2f(320.f, 280.f) - Vec2f(surf->m_size) * 0.5f;
-				break;
-			}
 			case CURSOR_INTERACTION_ON: {
 				cursorAnimatedHand.update1();
 				surf = cursorAnimatedHand.getCurrentTexture();
@@ -699,7 +695,9 @@ void ARX_INTERFACE_RenderCursor(bool flag, bool draginter) {
 								ARX_INTERFACE_DrawNumber(rect.topRight(), DRAGINTER->_itemdata->count, Color::white, iconScale);
 							}
 						} else {
-							if((InInventoryPos(DANAEMouse) || g_secondaryInventoryHud.containsPos(DANAEMouse)) || CANNOT_PUT_IT_HERE != EntityMoveCursor_Throw) {
+							if(g_secondaryInventoryHud.containsPos(DANAEMouse)
+							   || g_playerInventoryHud.containsPos(DANAEMouse)
+							   || CANNOT_PUT_IT_HERE != EntityMoveCursor_Throw) {
 								EERIEDrawBitmap(rect, .00001f, tc, color);
 							}
 						}
@@ -709,8 +707,8 @@ void ARX_INTERFACE_RenderCursor(bool flag, bool draginter) {
 					// Cross not over inventory icon
 					if(   CANNOT_PUT_IT_HERE != EntityMoveCursor_Ok
 					   && (eMouseState != MOUSE_IN_INVENTORY_ICON)
-					   && !InInventoryPos(DANAEMouse)
 					   && !g_secondaryInventoryHud.containsPos(DANAEMouse)
+					   && !g_playerInventoryHud.containsPos(DANAEMouse)
 					   && !ARX_INTERFACE_MouseInBook()) {
 						TextureContainer * tcc = cursorMovable;
 						

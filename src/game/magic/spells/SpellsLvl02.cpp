@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2014-2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -255,7 +255,7 @@ void ArmorSpell::Update() {
 	ARX_SOUND_RefreshPosition(m_snd_loop, entities[m_target]->pos);
 }
 
-Vec3f ArmorSpell::getPosition() {
+Vec3f ArmorSpell::getPosition() const {
 	return getTargetPosition();
 }
 
@@ -333,7 +333,7 @@ void LowerArmorSpell::Update() {
 	ARX_SOUND_RefreshPosition(m_snd_loop, entities[m_target]->pos);
 }
 
-Vec3f LowerArmorSpell::getPosition() {
+Vec3f LowerArmorSpell::getPosition() const {
 	return getTargetPosition();
 }
 
