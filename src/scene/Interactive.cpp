@@ -79,6 +79,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "game/Player.h"
 
 #include "gui/Cursor.h"
+#include "gui/Dragging.h"
 #include "gui/Speech.h"
 #include "gui/Interface.h"
 #include "gui/book/Book.h"
@@ -124,28 +125,6 @@ long HERO_SHOW_1ST = 1;
 static bool IsCollidingInter(Entity * io, const Vec3f & pos);
 static Entity * AddCamera(const res::path & classPath, EntityInstance instance = -1);
 static Entity * AddMarker(const res::path & classPath, EntityInstance instance = -1);
-
-float STARTED_ANGLE = 0;
-void Set_DragInter(Entity * io) {
-	
-	if(io != DRAGINTER) {
-		STARTED_ANGLE = player.angle.getYaw();
-	}
-	
-	if(io) {
-		g_draggedItemPreviousPosition = removeFromInventories(io);
-		io->show = SHOW_FLAG_IN_SCENE;
-	} else {
-		g_draggedItemPreviousPosition = InventoryPos();
-	}
-	
-	DRAGINTER = io;
-	
-	if(io && io->obj && io->obj->pbox) {
-		io->obj->pbox->active = 0;
-	}
-	
-}
 
 // Checks if an IO index number is valid
 bool ValidIONum(EntityHandle num) {
@@ -317,7 +296,8 @@ void ARX_INTERACTIVE_RemoveGoreOnIO(Entity * io)
 	long gorenum = -1;
 
 	for(size_t nn = 0; nn < io->obj->texturecontainer.size(); nn++) {
-		if(io->obj->texturecontainer[nn] && io->obj->texturecontainer[nn]->m_texName.string().find("gore") != std::string::npos) {
+		if(io->obj->texturecontainer[nn]
+		   && boost::contains(io->obj->texturecontainer[nn]->m_texName.string(), "gore")) {
 			gorenum = nn;
 			break;
 		}
@@ -346,7 +326,8 @@ void ARX_INTERACTIVE_HideGore(Entity * io, long flag)
 	long gorenum = -1;
 
 	for(size_t nn = 0; nn < io->obj->texturecontainer.size(); nn++) {
-		if(io->obj->texturecontainer[nn] && io->obj->texturecontainer[nn]->m_texName.string().find("gore") != std::string::npos) {
+		if(io->obj->texturecontainer[nn]
+		   && boost::contains(io->obj->texturecontainer[nn]->m_texName.string(), "gore")) {
 			gorenum = nn;
 			break;
 		}
@@ -513,9 +494,10 @@ void PrepareIOTreatZone(long flag) {
 			toequip->requestRoomUpdate = false;
 		}
 	}
-
-	if(DRAGINTER)
-		TREATZONE_AddIO(DRAGINTER);
+	
+	if(g_draggedEntity) {
+		TREATZONE_AddIO(g_draggedEntity);
+	}
 	
 	float TREATZONE_LIMIT = 3200;
 	if(!g_roomDistance.empty()) {
@@ -573,9 +555,8 @@ void PrepareIOTreatZone(long flag) {
 				treat = (dists < square(TREATZONE_LIMIT));
 			}
 
-			if(!treat) {
-				if(io == DRAGINTER)
-					treat = true;
+			if(io == g_draggedEntity) {
+				treat = true;
 			}
 			
 			if(io->gameFlags & GFLAG_ISINTREATZONE) {
@@ -1202,8 +1183,8 @@ void ARX_INTERACTIVE_Teleport(Entity * io, const Vec3f & target, bool flag) {
 	}
 	
 	// In case it is being dragged... (except for drag teleport update)
-	if(!flag && io == DRAGINTER) {
-		Set_DragInter(NULL);
+	if(!flag && io == g_draggedEntity) {
+		setDraggedEntity(NULL);
 	}
 	
 	if(io->ioflags & IO_NPC) {
@@ -1767,11 +1748,11 @@ Entity * AddItem(const res::path & classPath_, EntityInstance instance, AddInter
 /*!
  * \brief Returns nearest interactive object found at position x, y
  */
-Entity * GetFirstInterAtPos(const Vec2s & pos, long flag, Vec3f * _pRef, Entity ** _pTable, size_t * _pnNbInTable)
+Entity * GetFirstInterAtPos(const Vec2s & pos)
 {
 	float _fdist = 9999999999.f;
 	float fdistBB = 9999999999.f;
-	float fMaxDist = flag ? 9999999999.f : 350;
+	float fMaxDist = 350;
 	Entity * foundBB = NULL;
 	Entity * foundPixel = NULL;
 	bool bPlayerEquiped = false;
@@ -1779,27 +1760,13 @@ Entity * GetFirstInterAtPos(const Vec2s & pos, long flag, Vec3f * _pRef, Entity 
 	if(player.m_telekinesis) {
 		fMaxDist = 850;
 	}
-
-	size_t nStart = 1;
-	size_t nEnd = entities.size();
-
-	if(flag == 3 && _pTable && _pnNbInTable) {
-		nStart = 0;
-		nEnd = *_pnNbInTable;
-	}
-
-	for(size_t i = nStart; i < nEnd; i++) {
+	
+	for(size_t i = 1; i < entities.size(); i++) {
 		const EntityHandle handle = EntityHandle(i);
 		
 		bool bPass = true;
 
-		Entity * io;
-		
-		if(flag == 3 && _pTable && _pnNbInTable) {
-			io = _pTable[i];
-		} else {
-			io = entities[handle];
-		}
+		Entity * io = entities[handle];
 
 		// Is Object Valid ??
 		if(!io)
@@ -1808,7 +1775,7 @@ Entity * GetFirstInterAtPos(const Vec2s & pos, long flag, Vec3f * _pRef, Entity 
 		if((io->ioflags & IO_CAMERA) || (io->ioflags & IO_MARKER))
 			continue;
 
-		if(!flag && !(io->gameFlags & GFLAG_INTERACTIVITY))
+		if(!(io->gameFlags & GFLAG_INTERACTIVITY))
 			continue;
 
 		// Is Object in TreatZone ??
@@ -1819,15 +1786,8 @@ Entity * GetFirstInterAtPos(const Vec2s & pos, long flag, Vec3f * _pRef, Entity 
 
 		// Is Object Displayed on screen ???
 		if(!(io->show == SHOW_FLAG_IN_SCENE
-		     || (bPlayerEquiped && flag)
 		     || (bPlayerEquiped && (player.Interface & INTER_PLAYERBOOK)
 		         && (g_playerBook.currentPage() == BOOKMODE_STATS)))) {
-			continue;
-		}
-
-		if(flag == 2 && _pTable && _pnNbInTable && ((*_pnNbInTable) < 256)) {
-			_pTable[ *_pnNbInTable ] = io;
-			(*_pnNbInTable)++;
 			continue;
 		}
 
@@ -1839,20 +1799,14 @@ Entity * GetFirstInterAtPos(const Vec2s & pos, long flag, Vec3f * _pRef, Entity 
 			continue;
 		}
 		
-		if(flag && _pRef) {
-			float flDistanceToRef = arx::distance2(g_camera->m_pos, *_pRef);
-			float flDistanceToIO = arx::distance2(g_camera->m_pos, io->pos);
-			bPass = bPlayerEquiped || (flDistanceToIO < flDistanceToRef);
-		}
-		
 		float fp = fdist(io->pos, player.pos);
 
-		if((!flag && fp <= fMaxDist) && (!foundBB || fp < fdistBB)) {
+		if(fp <= fMaxDist && (!foundBB || fp < fdistBB)) {
 			fdistBB = fp;
 			foundBB = io;
 		}
 
-		if((io->ioflags & (IO_CAMERA | IO_MARKER | IO_GOLD)) || (bPlayerEquiped && !flag)) {
+		if((io->ioflags & (IO_CAMERA | IO_MARKER | IO_GOLD)) || bPlayerEquiped) {
 			if(bPlayerEquiped)
 				fp = 0.f;
 			else
@@ -2161,8 +2115,7 @@ void UpdateInter() {
 		const EntityHandle handle = EntityHandle(i);
 		Entity * io = entities[handle];
 
-		if(   !io
-		   || io == DRAGINTER
+		if(!io || io == g_draggedEntity
 		   || !(io->gameFlags & GFLAG_ISINTREATZONE)
 		   || io->show != SHOW_FLAG_IN_SCENE
 		   || (io->ioflags & IO_CAMERA)
@@ -2250,7 +2203,7 @@ void RenderInter() {
 			if(!(io->ioflags & IO_NPC) && io->obj) {
 				Anglef angle = io->angle;
 				angle.setYaw(MAKEANGLE(270.f - angle.getYaw()));
-				glm::quat rotation = glm::quat_cast(toRotationMatrix(angle));
+				glm::quat rotation = toQuaternion(angle);
 				TransformInfo t(io->pos, rotation, io->scale);
 				DrawEERIEInter(io->obj, t, io, false, invisibility);
 			}
@@ -2370,14 +2323,15 @@ float ARX_INTERACTIVE_GetArmorClass(Entity * io) {
 	return ac;
 }
 
-void ARX_INTERACTIVE_ActivatePhysics(EntityHandle t)
-{
+void ARX_INTERACTIVE_ActivatePhysics(EntityHandle t) {
+	
 	Entity * io = entities.get(t);
 	if(io) {
 		
-		if(io == DRAGINTER || (io->show != SHOW_FLAG_IN_SCENE))
+		if(io == g_draggedEntity || io->show != SHOW_FLAG_IN_SCENE) {
 			return;
-
+		}
+		
 		float yy;
 		EERIEPOLY * ep = CheckInPoly(io->pos, &yy);
 

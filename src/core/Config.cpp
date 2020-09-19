@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <sstream>
 
+#include <boost/algorithm/string/case_conv.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
 #include "input/Input.h"
@@ -49,6 +50,7 @@ namespace Default {
 
 const std::string
 	language = std::string(),
+	audio = std::string(),
 	renderer = "auto",
 	resolution = "auto",
 	audioBackend = "auto",
@@ -82,6 +84,8 @@ const int
 
 const bool
 	fullscreen = true,
+	viewBobbing = true,
+	screenShake = true,
 	showCrosshair = true,
 	antialiasing = true,
 	colorkeyAntialiasing = true,
@@ -98,7 +102,8 @@ const bool
 	forceToggle = false,
 	rawMouseInput = true,
 	borderTurning = true,
-	useAltRuneRecognition = true;
+	useAltRuneRecognition = true,
+	improvedBowAim = true;
 
 #ifdef ARX_DEBUG
 const bool allowConsole = true;
@@ -184,7 +189,9 @@ const std::string
 namespace Key {
 
 // Language options
-const std::string language = "string";
+const std::string
+	language = "string",
+	audio = "audio";
 
 // Video options
 const std::string
@@ -198,6 +205,8 @@ const std::string
 	vsync = "vsync",
 	fpsLimit = "fps_limit",
 	fov = "fov",
+	viewBobbing = "view_bobbing",
+	screenShake = "screen_shake",
 	antialiasing = "antialiasing",
 	maxAnisotropicFiltering = "max_anisotropic_filtering",
 	colorkeyAntialiasing = "colorkey_antialiasing",
@@ -249,6 +258,7 @@ const std::string
 	autoDescription = "auto_description",
 	borderTurning = "border_turning",
 	useAltRuneRecognition = "improved_rune_recognition",
+	improvedBowAim = "improved_bow_aim",
 	quickLevelTransition = "quick_level_transition",
 	allowConsole = "allow_console";
 
@@ -430,7 +440,8 @@ bool Config::save() {
 	
 	// language
 	writer.beginSection(Section::Language);
-	writer.writeKey(Key::language, language);
+	writer.writeKey(Key::language, interface.language);
+	writer.writeKey(Key::audio, audio.language);
 	
 	// video
 	writer.beginSection(Section::Video);
@@ -450,6 +461,8 @@ bool Config::save() {
 	writer.writeKey(Key::vsync, video.vsync);
 	writer.writeKey(Key::fpsLimit, video.fpsLimit);
 	writer.writeKey(Key::fov, video.fov);
+	writer.writeKey(Key::viewBobbing, video.viewBobbing);
+	writer.writeKey(Key::screenShake, video.screenShake);
 	writer.writeKey(Key::antialiasing, video.antialiasing);
 	writer.writeKey(Key::maxAnisotropicFiltering, video.maxAnisotropicFiltering);
 	writer.writeKey(Key::colorkeyAntialiasing, video.colorkeyAntialiasing);
@@ -505,6 +518,7 @@ bool Config::save() {
 	writer.writeKey(Key::autoDescription, input.autoDescription);
 	writer.writeKey(Key::borderTurning, input.borderTurning);
 	writer.writeKey(Key::useAltRuneRecognition, input.useAltRuneRecognition);
+	writer.writeKey(Key::improvedBowAim, input.improvedBowAim);
 	writer.writeKey(Key::quickLevelTransition, int(input.quickLevelTransition));
 	if(input.allowConsole) {
 		// Only write this if true so that switching from release to debug builds enables the console
@@ -574,7 +588,10 @@ bool Config::init(const fs::path & file) {
 	}
 	
 	// Get locale language
-	language = reader.getKey(Section::Language, Key::language, Default::language);
+	interface.language = reader.getKey(Section::Language, Key::language, Default::language);
+	boost::to_lower(interface.language);
+	audio.language = reader.getKey(Section::Language, Key::audio, Default::audio);
+	boost::to_lower(audio.language);
 	
 	// Get video settings
 	video.renderer = reader.getKey(Section::Video, Key::renderer, Default::renderer);
@@ -595,6 +612,8 @@ bool Config::init(const fs::path & file) {
 	video.fpsLimit = std::max(fpsLimit, -1);
 	float fov = reader.getKey(Section::Video, Key::fov, Default::fov);
 	video.fov = std::max(fov, 60.f);
+	video.viewBobbing = reader.getKey(Section::Video, Key::viewBobbing, Default::viewBobbing);
+	video.screenShake = reader.getKey(Section::Video, Key::screenShake, Default::screenShake);
 	video.antialiasing = reader.getKey(Section::Video, Key::antialiasing, Default::antialiasing);
 	int anisoFiltering = reader.getKey(Section::Video, Key::maxAnisotropicFiltering, Default::maxAnisotropicFiltering);
 	video.maxAnisotropicFiltering = std::max(anisoFiltering, 1);
@@ -657,6 +676,7 @@ bool Config::init(const fs::path & file) {
 	input.autoDescription = reader.getKey(Section::Input, Key::autoDescription, Default::autoDescription);
 	input.borderTurning = reader.getKey(Section::Input, Key::borderTurning, Default::borderTurning);
 	input.useAltRuneRecognition = reader.getKey(Section::Input, Key::useAltRuneRecognition, Default::useAltRuneRecognition);
+	input.improvedBowAim = reader.getKey(Section::Input, Key::improvedBowAim, Default::improvedBowAim);
 	int quickLevelTransition = reader.getKey(Section::Input, Key::quickLevelTransition, Default::quickLevelTransition);
 	input.quickLevelTransition = QuickLevelTransition(glm::clamp(quickLevelTransition, 0, 2));
 	input.allowConsole = reader.getKey(Section::Input, Key::allowConsole, Default::allowConsole);

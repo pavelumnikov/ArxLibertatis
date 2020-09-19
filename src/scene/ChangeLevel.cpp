@@ -154,6 +154,11 @@ static Entity * convertToValidIO(const std::string & idString) {
 		return NULL;
 	}
 	
+	if(idString == "player_-001") {
+		// Used in same cases by vanilla AF
+		return entities.player();
+	}
+	
 	arx_assert_msg(
 		idString.find_first_not_of("abcdefghijklmnopqrstuvwxyz_0123456789") == std::string::npos,
 		"bad interactive object id: \"%s\"", idString.c_str()
@@ -2332,7 +2337,7 @@ static void ARX_CHANGELEVEL_PopAllIO_FINISH(bool reloadflag, bool firstTime) {
 	}
 	
 	if(movedOOBItems) {
-		notification_add("Found out of bounds items and dropped them in front of the player.");
+		notification_add("system_engine_out_of_bounds_items");
 	}
 	
 	if(reloadflag) {

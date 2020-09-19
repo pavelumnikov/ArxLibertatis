@@ -111,12 +111,16 @@ static long ARX_THROWN_OBJECT_GetFree() {
 	return oldest;
 }
 
-extern EERIE_3DOBJ * arrowobj;
+glm::quat getProjectileQuatFromVector(Vec3f vector) {
+	Anglef angle = vectorToAngle(vector);
+	return glm::quat(glm::vec3(glm::radians(-angle.getPitch()), glm::radians(-angle.getYaw()), 0.f));
+}
 
-void ARX_THROWN_OBJECT_Throw(EntityHandle source, const Vec3f & position, const Vec3f & vect,
-                             const glm::quat & quat, float velocity, float damages, float poison) {
+void ARX_THROWN_OBJECT_Throw(EntityHandle source, const Vec3f & position, const Vec3f & vect, float gravity,
+                             EERIE_3DOBJ * obj, ActionPoint attach, const glm::quat & rotation,
+                             float damages, float poisonous) {
 	
-	arx_assert(arrowobj);
+	arx_assert(obj);
 	
 	long num = ARX_THROWN_OBJECT_GetFree();
 	if(num < 0)
@@ -128,11 +132,13 @@ void ARX_THROWN_OBJECT_Throw(EntityHandle source, const Vec3f & position, const 
 	projectile.position = position;
 	projectile.initial_position = position;
 	projectile.vector = vect;
-	projectile.quat = quat;
+	projectile.quat = getProjectileQuatFromVector(vect) * rotation;
+	projectile.gravity = gravity;
 	projectile.source = source;
-	projectile.obj = arrowobj;
-	projectile.velocity = velocity;
-	projectile.poisonous = poison;
+	projectile.obj = obj;
+	projectile.rotation = rotation;
+	projectile.attach = attach;
+	projectile.poisonous = poisonous;
 	
 	projectile.m_trail = new ArrowTrail();
 	projectile.m_trail->SetNextPosition(projectile.position);
@@ -254,6 +260,8 @@ void ARX_THROWN_OBJECT_Render() {
 		}
 		
 		TransformInfo t(projectile.position, projectile.quat);
+		t.pos = t(projectile.obj->vertexlist[projectile.obj->origin].v
+		          - projectile.obj->vertexlist[projectile.attach.handleData()].v);
 		// Object has to be retransformed because arrows share the same object
 		DrawEERIEInter_ModelTransform(projectile.obj, t);
 		DrawEERIEInter_ViewProjectTransform(projectile.obj);
@@ -284,7 +292,7 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 		return;
 	}
 	
-	if(projectile.velocity == 0.f) {
+	if(projectile.vector == Vec3f(0.f)) {
 		if(projectile.m_trail) {
 			projectile.m_trail->Update(timeDelta);
 			if(projectile.m_trail->emtpy()) {
@@ -296,6 +304,8 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 	}
 	
 	TransformInfo t(projectile.position, projectile.quat);
+	t.pos = t(projectile.obj->vertexlist[projectile.obj->origin].v
+	          - projectile.obj->vertexlist[projectile.attach.handleData()].v);
 	DrawEERIEInter_ModelTransform(projectile.obj, t);
 	
 	if((projectile.flags & ATO_FIERY) && !(projectile.flags & ATO_UNDERWATER)) {
@@ -313,20 +323,13 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 		createObjFireParticles(projectile.obj, 6, 2, 180);
 	}
 	
-	if(projectile.m_trail) {
-		projectile.m_trail->SetNextPosition(projectile.position);
-		projectile.m_trail->Update(timeDelta);
-	}
-	
-	float mod = timeDeltaMs * projectile.velocity;
 	Vec3f original_pos = projectile.position;
-	projectile.position.x += projectile.vector.x * mod;
-	float gmod = 1.f - projectile.velocity;
+	projectile.position += projectile.vector * timeDeltaMs;
 	
-	gmod = glm::clamp(gmod, 0.f, 1.f);
-	
-	projectile.position.y += projectile.vector.y * mod + (timeDeltaMs * gmod);
-	projectile.position.z += projectile.vector.z * mod;
+	if(projectile.gravity != 0.f) {
+		projectile.vector.y += projectile.gravity * timeDeltaMs;
+		projectile.quat = getProjectileQuatFromVector(projectile.vector) * projectile.rotation;
+	}
 	
 	CheckForIgnition(Sphere(original_pos, 10.f), false, 2);
 	
@@ -358,9 +361,7 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 		
 		const Vec3f v0 = actionPointPosition(projectile.obj, projectile.obj->actionlist[j].idx);
 		
-		Vec3f dest = original_pos + projectile.vector * 90.f;
-		Vec3f orgn = original_pos - projectile.vector * 20.f;
-		RaycastResult result = RaycastLine(orgn, dest, POLY_WATER | POLY_TRANS | POLY_NOCOL);
+		RaycastResult result = raycastScene(original_pos, v0, POLY_WATER | POLY_TRANS | POLY_NOCOL);
 		if(result || IsPointInField(v0)) {
 			
 			ParticleSparkSpawn(v0, result ? 14 : 24, SpawnSparkType_Default);
@@ -370,8 +371,6 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 				ARX_NPC_SpawnAudibleSound(v0, entities[projectile.source]);
 			}
 			
-			projectile.velocity = 0.f;
-			
 			if(ValidIONum(projectile.source)) {
 				std::string bkg_material = "earth";
 				if(result.hit && result.hit->tex && !result.hit->tex->m_texName.empty()) {
@@ -380,13 +379,15 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 				ARX_SOUND_PlayCollision("dagger", bkg_material, 1.f, 1.f, v0, entities[projectile.source]);
 			}
 			
-			projectile.position = original_pos;
-			
-			if(!result) {
+			if(result) {
+				// TODO better offset calculation
+				projectile.position = original_pos + result.pos - v0;
+				projectile.vector = Vec3f(0.f);
+			} else {
 				ARX_THROWN_OBJECT_Kill(i);
 			}
 			
-			return;
+			break;
 		}
 		
 		for(size_t k = 1; k <= 12; k++) {
@@ -475,7 +476,7 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 					
 				}
 				
-				projectile.velocity = 0.f;
+				projectile.vector = Vec3f(0.f);
 				
 				need_kill = true;
 				
@@ -488,6 +489,11 @@ static void ARX_THROWN_OBJECT_ManageProjectile(size_t i, GameDuration timeDelta)
 			
 		}
 		
+	}
+	
+	if(projectile.m_trail) {
+		projectile.m_trail->SetNextPosition(projectile.position);
+		projectile.m_trail->Update(timeDelta);
 	}
 	
 }

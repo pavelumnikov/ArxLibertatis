@@ -97,6 +97,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "graphics/texture/Texture.h"
 
 #include "gui/Cursor.h"
+#include "gui/Dragging.h"
 #include "gui/Hud.h"
 #include "gui/Menu.h"
 #include "gui/Speech.h"
@@ -322,8 +323,6 @@ void INTERFACE_TC::init() {
 	arx_assert(currentTab[8]);
 	arx_assert(currentTab[9]);
 	
-	g_bookResouces.Level = getLocalised("system_charsheet_player_lvl");
-	g_bookResouces.Xp = getLocalised("system_charsheet_player_xp");
 }
 
 
@@ -1136,7 +1135,7 @@ void ArxGame::managePlayerControls() {
 	   && !g_cursorOverBook
 	   && !cursorIsSpecial()
 	   && PLAYER_MOUSELOOK_ON
-	   && !DRAGINTER
+	   && !g_draggedEntity
 	   && !g_secondaryInventoryHud.containsPos(DANAEMouse)
 	   && !g_playerInventoryHud.containsPos(DANAEMouse)
 	   && (config.input.autoReadyWeapon == AlwaysAutoReadyWeapon
@@ -1309,7 +1308,7 @@ void ArxGame::manageKeyMouse() {
 					FlyingOverIO = pIO;
 					COMBINE = NULL;
 
-					if(DRAGINTER == NULL) {
+					if(!g_draggedEntity) {
 						
 						bool bOk = true;
 						Entity * container = entities.get(locateInInventories(FlyingOverIO).io);
@@ -1622,7 +1621,7 @@ void ArxGame::manageEntityDescription() {
 	
 	if(   !BLOCK_PLAYER_CONTROLS
 	   && !(player.Interface & INTER_COMBATMODE)
-	   && !DRAGINTER
+	   && !g_draggedEntity
 	   && (config.input.autoDescription || (eeMouseUp1() && !eeMouseDoubleClick1() && !(LastMouseClick & 4)))
 	   && FlyingOverIO
 	   && !FlyingOverIO->locname.empty()
@@ -1744,7 +1743,7 @@ void ArxGame::manageEditorControls() {
 	// Single Click On Object
 	if(   eeMouseUp1()
 	   && FlyingOverIO
-	   && !DRAGINTER
+	   && !g_draggedEntity
 	) {
 		
 		SendIOScriptEvent(entities.player(), FlyingOverIO, SM_CLICKED);
@@ -1774,64 +1773,15 @@ void ArxGame::manageEditorControls() {
 				// If there is no space, leave the item where it is
 			}
 			
-			if(DRAGINTER == FlyingOverIO)
-				DRAGINTER = NULL;
+			if(g_draggedEntity == FlyingOverIO) {
+				setDraggedEntity(NULL);
+			}
 			
 			FlyingOverIO = NULL;
 		}
 	}
 	
 	if(!(player.Interface & INTER_COMBATMODE)) {
-		// Dropping an Interactive Object that has been dragged
-		if(eeMouseUp1() && DRAGINTER) {
-			if(g_secondaryInventoryHud.containsPos(DANAEMouse)) {
-				g_secondaryInventoryHud.dropEntity();
-			} else if(g_playerInventoryHud.containsPos(DANAEMouse)) {
-				g_playerInventoryHud.dropEntity();
-			} else if(ARX_INTERFACE_MouseInBook()) {
-				if(g_playerBook.currentPage() == BOOKMODE_STATS) {
-					SendIOScriptEvent(entities.player(), DRAGINTER, SM_INVENTORYUSE);
-					COMBINE = NULL;
-				}
-			} else if(DRAGINTER->ioflags & IO_GOLD) {
-				ARX_PLAYER_AddGold(DRAGINTER);
-			} else {
-				
-				if(   !((DRAGINTER->ioflags & IO_ITEM) && DRAGINTER->_itemdata->count > 1)
-				   && DRAGINTER->obj
-				   && DRAGINTER->obj->pbox
-				   && !g_cursorOverBook
-				) {
-					// Put object in fromt of player
-					
-					bool res = Manage3DCursor(DRAGINTER, false);
-					// Throw Object
-					if(!res) {
-						Entity * io = DRAGINTER;
-						ARX_PLAYER_Remove_Invisibility();
-						io->obj->pbox->active = 1;
-						io->obj->pbox->stopcount = 0;
-						io->pos = player.pos + Vec3f(0.f, 80.f, 0.f);
-						
-						Vec2f centerOffset = Vec2f(DANAEMouse) - Vec2f(g_size.center());
-						Vec2f ratio(-centerOffset.x / g_size.center().x, centerOffset.y / g_size.height() * 2);
-						
-						Vec3f viewvector = angleToVector(player.angle + Anglef(0.f, ratio.x * 30.f, 0.f));
-						viewvector.y += ratio.y;
-						
-						io->soundtime = 0;
-						io->soundcount = 0;
-						
-						EERIE_PHYSICS_BOX_Launch(io->obj, io->pos, io->angle, viewvector);
-						ARX_SOUND_PlaySFX(g_snd.WHOOSH, &io->pos);
-						
-						arx_assert(!locateInInventories(io));
-						io->show = SHOW_FLAG_IN_SCENE;
-						Set_DragInter(NULL);
-					}
-				}
-			}
-		}
 		
 		if(COMBINE && COMBINE != player.torch) {
 			Vec3f pos = GetItemWorldPosition(COMBINE);
@@ -1935,7 +1885,7 @@ void ArxGame::manageEditorControls() {
 		if(   DRAGGING
 		   && (!PLAYER_MOUSELOOK_ON || config.input.autoReadyWeapon != AlwaysAutoReadyWeapon)
 		   && !GInput->actionPressed(CONTROLS_CUST_MAGICMODE)
-		   && !DRAGINTER
+		   && !g_draggedEntity
 		) {
 			if(g_secondaryInventoryHud.containsPos(g_dragStartPos)) {
 				Entity * item = g_secondaryInventoryHud.getObj(g_dragStartPos);
@@ -1959,19 +1909,17 @@ void ArxGame::manageEditorControls() {
 						io->bbox2D.max.x = -1;
 					}
 					
-					Set_DragInter(io);
+					setDraggedEntity(io);
 					
 					ARX_PLAYER_Remove_Invisibility();
 					
 					if((io->ioflags & IO_NPC) || (io->ioflags & IO_FIX)) {
-						Set_DragInter(NULL);
+						setDraggedEntity(NULL);
 					} else {
 						if(io->ioflags & IO_UNDERWATER) {
 							io->ioflags &= ~IO_UNDERWATER;
 							ARX_SOUND_PlayInterface(g_snd.PLOUF, Random::getf(0.8f, 1.2f));
 						}
-						arx_assert(!locateInInventories(DRAGINTER));
-						DRAGINTER->show = SHOW_FLAG_NOT_DRAWN;
 						ARX_SOUND_PlayInterface(g_snd.INVSTD);
 					}
 					

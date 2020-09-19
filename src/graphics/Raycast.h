@@ -21,6 +21,16 @@
 
 #include "graphics/GraphicsTypes.h"
 #include "math/Types.h"
+#include "util/Flags.h"
+
+class Entity;
+
+enum RaycastFlag {
+	RaycastAnyHit,
+	RaycastIgnorePlayer,
+};
+DECLARE_FLAGS(RaycastFlag, RaycastFlags)
+DECLARE_FLAGS_OPERATORS(RaycastFlags)
 
 struct RaycastResult {
 	
@@ -37,15 +47,41 @@ struct RaycastResult {
 		, pos(pos_)
 	{ }
 	
-	explicit operator bool() const {
+	operator bool() const {
 		return hit != NULL;
 	}
 	
 };
 
-bool RaycastLightFlare(const Vec3f & start, const Vec3f & end);
-RaycastResult RaycastLine(const Vec3f & start, const Vec3f & end, PolyType ignored = POLY_TRANS);
+RaycastResult raycastScene(const Vec3f & start, const Vec3f & end, PolyType ignored = POLY_TRANS,
+                           RaycastFlags flags = 0);
 
+struct EntityRaycastResult {
+	
+	Entity * entity;
+	EERIE_FACE * face;
+	Vec3f pos;
+	
+	EntityRaycastResult()
+		: entity(NULL)
+		, face(NULL)
+		, pos(0.f)
+	{ }
+	
+	EntityRaycastResult(Entity * entity_, EERIE_FACE * face_, Vec3f pos_)
+		: entity(entity_)
+		, face(face_)
+		, pos(pos_)
+	{ }
+	
+	operator bool() const {
+		return entity != NULL;
+	}
+	
+};
+
+EntityRaycastResult raycastEntities(const Vec3f & start, const Vec3f & end, PolyType ignored = POLY_TRANS,
+                                    RaycastFlags flags = 0);
 
 void RaycastDebugClear();
 void RaycastDebugDraw();

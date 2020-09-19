@@ -27,6 +27,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <glm/glm.hpp>
 #include <glm/gtc/epsilon.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include "math/Types.h"
 
@@ -174,6 +175,27 @@ GLM_FUNC_QUALIFIER bool intersectLineTriangle
 	return true;
 }
 
+template <typename genType>
+GLM_FUNC_QUALIFIER bool intersectRaySphere
+(
+	genType const & rayStarting, genType const & rayNormalizedDirection,
+	genType const & sphereCenter, const typename genType::value_type sphereRadiusSquered,
+	typename genType::value_type & intersectionDistance
+)
+{
+	typename genType::value_type Epsilon = std::numeric_limits<typename genType::value_type>::epsilon();
+	genType diff = sphereCenter - rayStarting;
+	typename genType::value_type t0 = glm::dot(diff, rayNormalizedDirection);
+	typename genType::value_type dSquared = glm::dot(diff, diff) - t0 * t0;
+	if(dSquared > sphereRadiusSquered)
+	{
+		return false;
+	}
+	typename genType::value_type t1 = glm::sqrt(sphereRadiusSquered - dSquared);
+	intersectionDistance = t0 > t1 + Epsilon ? t0 - t1 : t0 + t1;
+	return intersectionDistance > Epsilon;
+}
+
 GLM_FUNC_QUALIFIER Vec2f rotate(Vec2f const & v, float const & angle) {
 	float const cos(glm::cos(angle));
 	float const sin(glm::sin(angle));
@@ -196,6 +218,37 @@ GLM_FUNC_QUALIFIER float orientedAngle
 		return Angle;
 	else
 		return -Angle;
+}
+
+// GLM does not handle singularity (e.g. for q=(0,0.707107,0,0.707107))
+GLM_FUNC_QUALIFIER float roll(glm::quat const & q)
+{
+	float const y = 2.f * (q.x * q.y + q.w * q.z);
+	float const x = q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z;
+	
+	if(glm::all(glm::epsilonEqual(glm::vec2(x, y), glm::vec2(0), 4.f * glm::epsilon<float>()))) // avoid atan2(0,0) - handle singularity
+		return 0.f;
+	
+	return glm::atan(y, x);
+}
+
+// Broken in GLM 0.9.8.5
+GLM_FUNC_QUALIFIER float pitch(glm::quat const & q)
+{
+	// return T(atan(T(2) * (q.y * q.z + q.w * q.x), q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z));
+	float const y = 2.f * (q.y * q.z + q.w * q.x);
+	float const x = q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z;
+	
+	if(glm::all(glm::epsilonEqual(glm::vec2(x, y), glm::vec2(0), 4.f * glm::epsilon<float>()))) // avoid atan2(0,0) - handle singularity - Matiis
+		return 2.f * glm::atan(q.x, q.w);
+	
+	return glm::atan(y, x);
+}
+
+// Older GLM versions don't have the clamp
+GLM_FUNC_QUALIFIER float yaw(glm::quat const & q)
+{
+	return glm::asin(glm::clamp(-2.f * (q.x * q.z - q.w * q.y), -1.f, 1.f));
 }
 
 } // namespace arx

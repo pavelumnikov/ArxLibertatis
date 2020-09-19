@@ -17,6 +17,8 @@
  * along with Arx Libertatis.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "unpak/UnPak.h"
+
 #include <vector>
 #include <string>
 #include <cstdlib>
@@ -35,10 +37,10 @@
 #include "io/resource/PakReader.h"
 #include "io/resource/PakEntry.h"
 #include "io/resource/ResourcePath.h"
+#include "io/resource/ResourceSetup.h"
 #include "io/log/Logger.h"
 
 #include "platform/ProgramOptions.h"
-#include "platform/WindowsMain.h"
 
 #include "util/MD5.h"
 #include "util/Unicode.h"
@@ -163,6 +165,9 @@ static void processResources(PakReader & resources, const fs::path & prefix, Unp
 		std::cout << "external";
 	}
 	std::cout << "\n";
+	if(resources.getChecksum() != util::md5::checksum()) {
+		std::cout << "Id: " << resources.getChecksum() << "\n";
+	}
 	
 	processDirectory(resources, prefix, res::path(), action);
 }
@@ -197,23 +202,9 @@ static void handleQuietOption() {
 	g_quiet = true;
 }
 
-static void handlePositionalArgument(const std::string & file) {
+static void handleArchive(const std::string & file) {
 	g_archives.push_back(file);
 }
-
-ARX_PROGRAM_OPTION("extract", "e", "Extract archive contents", &handleExtractOption)
-
-ARX_PROGRAM_OPTION("manifest", "m", "Print archive manifest", &handleManifestOption)
-
-ARX_PROGRAM_OPTION("list", "", "List archive contents", &handleListOption)
-
-ARX_PROGRAM_OPTION_ARG("output-dir", "o", "Directory to extract files to", &handleOutputDirOption, "DIR")
-
-ARX_PROGRAM_OPTION("all", "a", "Process all pak files loaded by the game", &handleAllOption)
-
-ARX_PROGRAM_OPTION("quiet", "q", "Don't print log output", &handleQuietOption)
-
-ARX_PROGRAM_OPTION_ARG("", "", "PAK archives to process", &handlePositionalArgument, "DIRS")
 
 static void addResourceDir(PakReader & resources, const fs::path & base) {
 	
@@ -228,7 +219,19 @@ static void addResourceDir(PakReader & resources, const fs::path & base) {
 	
 }
 
-int utf8_main(int argc, char ** argv) {
+#ifndef ARXTOOL
+#define arxunpak_main utf8_main
+#endif
+
+int arxunpak_main(int argc, char ** argv) {
+	
+	ARX_PROGRAM_OPTION("extract", "e", "Extract archive contents", &handleExtractOption)
+	ARX_PROGRAM_OPTION("manifest", "m", "Print archive manifest", &handleManifestOption)
+	ARX_PROGRAM_OPTION("list", "", "List archive contents", &handleListOption)
+	ARX_PROGRAM_OPTION_ARG("output-dir", "o", "Directory to extract files to", &handleOutputDirOption, "DIR")
+	ARX_PROGRAM_OPTION("all", "a", "Process all pak files loaded by the game", &handleAllOption)
+	ARX_PROGRAM_OPTION("quiet", "q", "Don't print log output", &handleQuietOption)
+	ARX_PROGRAM_OPTION_ARG("", "", "PAK archives to process", &handleArchive, "DIRS")
 	
 	ARX_UNUSED(g_resources);
 	
@@ -257,31 +260,7 @@ int utf8_main(int argc, char ** argv) {
 	PakReader resources;
 	
 	if(status == RunProgram && g_addDefaultArchives) {
-		// TODO share this list with the game code
-		static const char * const default_paks[][2] = {
-			{ "data.pak", NULL },
-			{ "loc.pak", "loc_default.pak" },
-			{ "data2.pak", NULL },
-			{ "sfx.pak", NULL },
-			{ "speech.pak", "speech_default.pak" },
-		};
-		BOOST_FOREACH(const char * const * const filenames, default_paks) {
-			if(resources.addArchive(fs::findDataFile(filenames[0]))) {
-				continue;
-			}
-			if(filenames[1] && resources.addArchive(fs::findDataFile(filenames[1]))) {
-				continue;
-			}
-			std::ostringstream oss;
-			oss << "Missing required data file: \"" << filenames[0] << "\"";
-			if(filenames[1]) {
-				oss << " (or \"" << filenames[1] << "\")";
-			}
-			LogError << oss.str();
-		}
-		BOOST_REVERSE_FOREACH(const fs::path & base, fs::getDataDirs()) {
-			addResourceDir(resources, base);
-		}
+		addDefaultResources(&resources);
 	}
 	
 	if(status == RunProgram) {

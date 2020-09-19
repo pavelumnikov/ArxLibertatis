@@ -22,12 +22,15 @@
 
 #include <vector>
 #include <istream>
+#include <string>
+#include <map>
 
 #include <boost/noncopyable.hpp>
 
 #include "io/resource/PakEntry.h"
 #include "io/resource/ResourcePath.h"
 #include "util/Flags.h"
+#include "util/MD5.h"
 
 namespace fs { class path; }
 
@@ -50,6 +53,8 @@ public:
 	virtual ~PakFileHandle() { }
 	
 };
+
+typedef std::map<util::md5::checksum, std::vector<std::string> > PakFilter;
 
 class PakReader : public PakDirectory {
 	
@@ -88,7 +93,7 @@ public:
 	 */
 	bool addFiles(const fs::path & path, const res::path & mount = res::path());
 	
-	bool addArchive(const fs::path & pakfile);
+	bool addArchive(const fs::path & pakfile, const PakFilter * filter = NULL);
 	void clear();
 	
 	std::string read(const res::path & name);
@@ -97,8 +102,11 @@ public:
 	
 	ReleaseFlags getReleaseType() { return release; }
 	
+	const util::md5::checksum & getChecksum() { return m_checksum; }
+	
 private:
 	
+	util::md5::checksum m_checksum;
 	ReleaseFlags release;
 	std::vector<std::istream *> paks;
 	

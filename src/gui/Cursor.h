@@ -29,18 +29,8 @@ void cursorSetRedistribute(long value);
 
 extern TextureContainer * cursorMovable;
 
-enum EntityMoveCursor {
-	EntityMoveCursor_Throw = -1,
-	EntityMoveCursor_Ok = 0,
-	EntityMoveCursor_Invalid = 1
-};
-
-extern EntityMoveCursor CANNOT_PUT_IT_HERE;
-
 void cursorTexturesInit();
 
-bool Manage3DCursor(Entity * io, bool simulate, bool draginter = false);
-
-void ARX_INTERFACE_RenderCursor(bool flag, bool draginter = false);
+void ARX_INTERFACE_RenderCursor(bool flag);
 
 #endif // ARX_GUI_CURSOR_H

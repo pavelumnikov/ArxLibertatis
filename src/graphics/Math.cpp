@@ -443,21 +443,15 @@ glm::mat4 toRotationMatrix(const Anglef & angle) {
 	return rotateZ * rotateX * rotateY;
 }
 
-glm::quat angleToQuatForArrow(const Anglef & angle) {
-	float aa = angle.getPitch();
-	float ab = 90.f - angle.getYaw();
-	
-	Vec3f front(0.f, 0.f, 1.f);
-	Vec3f up(0.f, -1.f, 0.f);
-	
-	front = VRotateZ(front, aa);
-	front = VRotateY(front, ab);
-	up = VRotateZ(up, aa);
-	up = VRotateY(up, ab);
-	
-	glm::mat4x4 tmat;
-	MatrixSetByVectors(tmat, front, up);
-	return glm::quat_cast(tmat);
+glm::quat toQuaternion(const Anglef & angle) {
+	glm::quat rotation = glm::quat(glm::vec3(0.f, glm::radians(angle.getYaw()), 0.f));
+	rotation = glm::quat(glm::vec3(glm::radians(angle.getPitch()), 0.f, 0.f)) * rotation;
+	return glm::quat(glm::vec3(0.f, 0.f, glm::radians(-angle.getRoll()))) * rotation;
+}
+
+Anglef toAngle(const glm::quat & quat) {
+	glm::quat q = quat * glm::quat(glm::vec3(0.f, 0.f, glm::radians(90.f)));
+	return Anglef(-glm::degrees(arx::yaw(q)), glm::degrees(arx::pitch(q)), 90.f - glm::degrees(arx::roll(q)));
 }
 
 glm::quat angleToQuatForExtraRotation(const Anglef & angle) {

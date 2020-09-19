@@ -45,6 +45,7 @@
 #include "gui/MenuWidgets.h"
 #include "gui/Text.h"
 #include "gui/TextManager.h"
+#include "gui/book/Book.h"
 #include "gui/menu/MenuCursor.h"
 #include "gui/menu/MenuFader.h"
 #include "gui/menu/MenuPage.h"
@@ -502,6 +503,13 @@ public:
 		reserveBottom();
 		
 		{
+			std::string label = getLocalised("system_menus_options_localization");
+			TextWidget * txt = new TextWidget(hFontMenu, label);
+			txt->setTargetPage(Page_Localization);
+			addCenter(txt);
+		}
+		
+		{
 			std::string label = getLocalised("system_menus_options_video");
 			TextWidget * txt = new TextWidget(hFontMenu, label);
 			txt->setTargetPage(Page_OptionsVideo);
@@ -538,6 +546,117 @@ public:
 		
 		addBackButton(Page_None);
 		
+	}
+	
+};
+
+class LocalizationMenuPage arx_final : public MenuPage {
+	
+	std::vector<std::string> m_textLanguages;
+	std::vector<std::string> m_audioLanguages;
+	
+	CycleTextWidget * m_textLanguageSlider;
+	CycleTextWidget * m_audioLanguageSlider;
+	
+public:
+	
+	LocalizationMenuPage()
+		: MenuPage(Page_Localization)
+	{ }
+	
+	~LocalizationMenuPage() { }
+	
+	void init() {
+		
+		reserveBottom();
+		
+		addCenter(new Spacer(hFontMainMenu->getLineHeight()));
+		
+		{
+			TextWidget * txt;
+			if(g_iconFont) {
+				txt = new TextWidget(g_iconFont, getLocalised("system_localization_text"));
+			} else {
+				txt = new TextWidget(hFontMenu, "Text");
+			}
+			txt->setEnabled(false);
+			addCenter(txt);
+		}
+		
+		{
+			m_textLanguages.clear();
+			m_textLanguageSlider = new CycleTextWidget(sliderSize(), hFontMainMenu, "");
+			m_textLanguageSlider->valueChanged = boost::bind(&LocalizationMenuPage::onChangedTextLanguage, this, arg::_1, arg::_2);
+			Languages languages = getAvailableTextLanguages();
+			BOOST_FOREACH(const Languages::value_type & language, languages) {
+				m_textLanguageSlider->addEntry(language.second.name);
+				if(m_textLanguages.empty() || config.interface.language == language.first) {
+					m_textLanguageSlider->selectLast();
+				}
+				m_textLanguages.push_back(language.first);
+			}
+			m_textLanguageSlider->setEnabled(m_textLanguages.size() > 1);
+			addCenter(m_textLanguageSlider);
+		}
+		
+		addCenter(new Spacer(hFontMainMenu->getLineHeight()));
+		
+		{
+			TextWidget * txt;
+			if(g_iconFont) {
+				txt = new TextWidget(g_iconFont, getLocalised("system_localization_audio"));
+			} else {
+				txt = new TextWidget(hFontMenu, "Audio");
+			}
+			txt->setEnabled(false);
+			addCenter(txt);
+		}
+		
+		{
+			m_audioLanguages.clear();
+			m_audioLanguageSlider = new CycleTextWidget(sliderSize(), hFontMainMenu, "");
+			m_audioLanguageSlider->valueChanged = boost::bind(&LocalizationMenuPage::onChangedAudioLanguage, this, arg::_1, arg::_2);
+			Languages languages = getAvailableAudioLanguages();
+			BOOST_FOREACH(const Languages::value_type & language, languages) {
+				m_audioLanguageSlider->addEntry(language.second.name);
+				if(m_audioLanguages.empty() || config.audio.language == language.first) {
+					m_audioLanguageSlider->selectLast();
+				}
+				m_audioLanguages.push_back(language.first);
+			}
+			m_audioLanguageSlider->setEnabled(m_audioLanguages.size() > 1);
+			addCenter(m_audioLanguageSlider);
+		}
+		
+		addCenter(new Spacer(hFontMainMenu->getLineHeight()));
+		
+		addBackButton(Page_Options);
+		
+	}
+	
+private:
+	
+	void onChangedTextLanguage(int pos, const std::string & str) {
+		ARX_UNUSED(str);
+		if(size_t(pos) >= m_textLanguages.size() || config.interface.language == m_textLanguages[size_t(pos)]) {
+			return;
+		}
+		config.interface.language = m_textLanguages[size_t(pos)];
+		g_playerBook.questBook.clear();
+		initLocalisation();
+		ARX_Text_Init(true);
+		g_mainMenu->bReInitAll = true;
+		config.save();
+	}
+	
+	
+	void onChangedAudioLanguage(int pos, const std::string & str) {
+		ARX_UNUSED(str);
+		if(size_t(pos) >= m_audioLanguages.size() || config.audio.language == m_audioLanguages[size_t(pos)]) {
+			return;
+		}
+		config.audio.language = m_audioLanguages[size_t(pos)];
+		config.save();
 	}
 	
 };
@@ -720,6 +839,24 @@ public:
 		}
 		
 		{
+			std::string label = getLocalised("system_menus_options_videos_view_bobbing");
+			CheckboxWidget * cb = new CheckboxWidget(checkboxSize(), hFontMenu, label);
+			cb->setChecked(config.video.viewBobbing);
+			cb->stateChanged = boost::bind(&VideoOptionsMenuPage::onChangedViewBobbing, this, arg::_1);
+			addCenter(cb);
+			m_fullscreenCheckbox = cb;
+		}
+		
+		{
+			std::string label = getLocalised("system_menus_options_videos_screen_shake");
+			CheckboxWidget * cb = new CheckboxWidget(checkboxSize(), hFontMenu, label);
+			cb->setChecked(config.video.screenShake);
+			cb->stateChanged = boost::bind(&VideoOptionsMenuPage::onChangedScreenShake, this, arg::_1);
+			addCenter(cb);
+			m_fullscreenCheckbox = cb;
+		}
+		
+		{
 			TextWidget * txt = new TextWidget(hFontMenu, getLocalised("system_menus_video_apply"));
 			txt->clicked = boost::bind(&VideoOptionsMenuPage::onClickedApply, this, arg::_1);
 			txt->setEnabled(false);
@@ -827,6 +964,14 @@ private:
 	
 	void onChangedFov(int state) {
 		config.video.fov = 75.f + float(state) * 5.f;
+	}
+	
+	void onChangedViewBobbing(bool checked) {
+		config.video.viewBobbing = checked;
+	}
+	
+	void onChangedScreenShake(bool checked) {
+		config.video.screenShake = checked;
 	}
 	
 	void onClickedApply(Widget * /* widget */) {
@@ -1523,6 +1668,14 @@ public:
 		}
 		
 		{
+			std::string label = getLocalised("system_menus_alt_bow_aim");
+			CheckboxWidget * cb = new CheckboxWidget(checkboxSize(), hFontMenu, label);
+			cb->setChecked(config.input.improvedBowAim);
+			cb->stateChanged = boost::bind(&InputOptionsMenuPage::onChangedAltBowAim, this, arg::_1);
+			addCenter(cb);
+		}
+		
+		{
 			std::string label = getLocalised("system_menus_quick_level_transition");
 			CycleTextWidget * cb = new CycleTextWidget(sliderSize(), hFontMenu, label);
 			cb->valueChanged = boost::bind(&InputOptionsMenuPage::onChangedQuickLevelTransition, this, arg::_1, arg::_2);
@@ -1582,6 +1735,10 @@ private:
 	
 	void onChangedAltRuneRecognition(bool checked) {
 		config.input.useAltRuneRecognition = checked;
+	}
+	
+	void onChangedAltBowAim(bool checked) {
+		config.input.improvedBowAim = checked;
 	}
 	
 	void onChangedQuickLevelTransition(int pos, const std::string & str) {
@@ -1873,6 +2030,7 @@ void MainMenu::initWindowPages() {
 	m_window->add(new ControlOptionsMenuPage2());
 	
 	m_window->add(new QuitConfirmMenuPage());
+	m_window->add(new LocalizationMenuPage());
 	
 }
 
@@ -1945,6 +2103,7 @@ void MainMenu::init()
 	}
 	pos.y += yOffset;
 	
+	{
 	std::string version = arx_name + " " + arx_version;
 	if(!arx_release_codename.empty()) {
 		version += " \"";
@@ -1958,6 +2117,19 @@ void MainMenu::init()
 	txt->forceDisplay(TextWidget::Disabled);
 	txt->setPosition(RATIO_2(Vec2f(verPosX / g_sizeRatio.x, 80)));
 	m_widgets->add(txt);
+	}
+	
+	{
+	TextWidget * txt;
+	if(g_iconFont) {
+		txt = new TextWidget(g_iconFont, getLocalised("system_localization"));
+	} else {
+		txt = new TextWidget(hFontMenu, "Language");
+	}
+	txt->setTargetPage(Page_Localization);
+	txt->setPosition(Vec2f(g_size.bottomRight() - txt->font()->getTextSize(txt->text()).size()) - Vec2f(minSizeRatio() * 25.f, 0.f));
+	m_widgets->add(txt);
+	}
 }
 
 void MainMenu::onClickedResumeGame(Widget * /* widget */) {

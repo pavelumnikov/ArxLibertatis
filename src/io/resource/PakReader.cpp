@@ -25,6 +25,7 @@
 #include <ios>
 
 #include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/foreach.hpp>
 #include <boost/range/size.hpp>
 
@@ -383,7 +384,7 @@ class PlainFile : public PakFile {
 	
 public:
 	
-	PlainFile(const fs::path & path) : m_path(path) { }
+	explicit PlainFile(const fs::path & path) : m_path(path) { }
 	
 	std::string read() const;
 	
@@ -447,7 +448,7 @@ PakReader::~PakReader() {
 	clear();
 }
 
-bool PakReader::addArchive(const fs::path & pakfile) {
+bool PakReader::addArchive(const fs::path & pakfile, const PakFilter * filter) {
 	
 	fs::ifstream * ifs = new fs::ifstream(pakfile, fs::fstream::in | fs::fstream::binary);
 	
@@ -495,6 +496,21 @@ bool PakReader::addArchive(const fs::path & pakfile) {
 	}
 	release |= key;
 	
+	util::md5::checksum checksum = util::md5::compute(&fat[0], fat_size);
+	if(has_dirs() || has_files()) {
+		m_checksum = util::md5::checksum();
+	} else {
+		m_checksum = checksum;
+	}
+	
+	const std::vector<std::string> * filters = NULL;
+	if(filter) {
+		PakFilter::const_iterator it = filter->find(checksum);
+		if(it != filter->end()) {
+			filters = &it->second;
+		}
+	}
+	
 	char * pos = &fat[0];
 	
 	paks.push_back(ifs);
@@ -507,7 +523,22 @@ bool PakReader::addArchive(const fs::path & pakfile) {
 			return false;
 		}
 		
-		PakDirectory * dir = addDirectory(res::path::load(dirname));
+		PakDirectory * dir = NULL;
+		res::path dirpath = res::path::load(dirname);
+		bool filtered = false;
+		if(filters) {
+			BOOST_FOREACH(const std::string & exclude, *filters) {
+				if(boost::starts_with(dirpath.string(), exclude)
+				   && (dirpath.string().length() == exclude.length() || dirpath.string()[exclude.length()] == '/')) {
+					LogInfo << pakfile << ": ignoring " << dirpath;
+					filtered = true;
+					break;
+				}
+			}
+		}
+		if(!filtered) {
+			dir = addDirectory(dirpath);
+		}
 		
 		u32 nfiles;
 		if(!util::safeGet(nfiles, pos, fat_size)) {
@@ -535,6 +566,10 @@ bool PakReader::addArchive(const fs::path & pakfile) {
 				 || !util::safeGet(size, pos, fat_size)) {
 				LogError << pakfile << ": error reading file attributes from FAT, wrong key?";
 				return false;
+			}
+			
+			if(!dir) {
+				continue;
 			}
 			
 			const u32 PAK_FILE_COMPRESSED = 1;
@@ -588,6 +623,8 @@ PakFileHandle * PakReader::open(const res::path & name) {
 }
 
 bool PakReader::addFiles(const fs::path & path, const res::path & mount) {
+	
+	m_checksum = util::md5::checksum();
 	
 	fs::FileType type = fs::get_type(path);
 	

@@ -147,8 +147,8 @@ glm::quat Quat_Slerp(const glm::quat & from, glm::quat to, float ratio);
 
 glm::quat QuatFromAngles(const Anglef & angle);
 glm::mat4 toRotationMatrix(const Anglef & angle);
-
-glm::quat angleToQuatForArrow(const Anglef & angle);
+glm::quat toQuaternion(const Anglef & angle);
+Anglef toAngle(const glm::quat & quat);
 
 glm::quat angleToQuatForExtraRotation(const Anglef & angle);
 
@@ -246,6 +246,9 @@ inline long PointInUnderCylinder(const Cylinder & cyl, const Vec3f & pt) {
 
 template <typename T>
 T positive_modulo(T a, T b) {
+	if(b == 1) {
+		return 0;
+	}
 	return (a % b) + T(a < 0) * b;
 }
 

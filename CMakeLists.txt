@@ -34,6 +34,11 @@ if(BUILD_ALL OR DEVELOPER)
 endif()
 suboption(BUILD_TESTS "Build tests" BOOL ${default_BUILD_TESTS})
 option(BUILD_TOOLS "Build tools" ON)
+set(default_BUILD_TOOLS_MERGED ON)
+if(WIN32)
+	set(default_BUILD_TOOLS_MERGED OFF)
+endif()
+suboption(BUILD_TOOLS_MERGED "Merge tools into a single binary" BOOL ${default_BUILD_TOOLS_MERGED})
 set(def_BUILD_CRASHHANDLER ON)
 if(MACOS)
 	set(def_BUILD_CRASHHANDLER OFF)
@@ -1080,6 +1085,7 @@ set(GUI_SOURCES
 	src/gui/Console.cpp
 	src/gui/Credits.cpp
 	src/gui/Cursor.cpp
+	src/gui/Dragging.cpp
 	src/gui/Hud.cpp
 	src/gui/Interface.cpp
 	src/gui/LoadLevelScreen.cpp
@@ -1147,6 +1153,7 @@ set(IO_RESOURCE_SOURCES
 	src/io/resource/PakEntry.cpp
 	src/io/resource/PakReader.cpp
 	src/io/resource/ResourcePath.cpp
+	src/io/resource/ResourceSetup.cpp
 )
 set(IO_LOGGER_POSIX_SOURCES src/io/log/ColorLogger.cpp)
 set(IO_LOGGER_WINDOWS_SOURCES src/io/log/MsvcLogger.cpp)
@@ -1262,6 +1269,7 @@ set(UTIL_CMDLINE_SOURCES
 set(UTIL_MD5_SOURCES
 	src/util/MD5.cpp
 )
+list(APPEND IO_RESOURCE_SOURCES ${UTIL_MD5_SOURCES})
 
 set(WINDOW_SOURCES
 	src/window/RenderWindow.cpp
@@ -1656,6 +1664,7 @@ if(ARX_HAVE_PROFILER)
 	)
 	
 	set(arxprofiler_SOURCES
+		src/math/Random.cpp
 		src/platform/profiler/ProfilerDataFormat.h
 		${BASE_SOURCES}
 	)
@@ -1732,21 +1741,15 @@ if(BUILD_TOOLS)
 		src/io/IniSection.cpp
 		tools/savetool/SaveFix.h
 		tools/savetool/SaveFix.cpp
+		tools/savetool/SaveRename.h
 		tools/savetool/SaveRename.cpp
+		tools/savetool/SaveTool.h
 		tools/savetool/SaveTool.cpp
 		tools/savetool/SaveView.h
 		tools/savetool/SaveView.cpp
 	)
 	
-	if(WIN32)
-		create_version_resource(arxsavetool "${VERSION_NAME} Save File Tool")
-		create_application_manifest(arxsavetool)
-		list(APPEND arxsavetool_SOURCES ${arxsavetool-version.rc} ${arxsavetool.manifest})
-	endif()
-	
 	set(arxsavetool_LIBRARIES ${BASE_LIBRARIES} ${ZLIB_LIBRARIES})
-	
-	add_executable_shared(arxsavetool "${arxsavetool_SOURCES}" "${arxsavetool_LIBRARIES}")
 	
 	set(arxunpak_SOURCES
 		${BASE_SOURCES}
@@ -1754,19 +1757,63 @@ if(BUILD_TOOLS)
 		${PLATFORM_CONSOLE_SOURCES}
 		${IO_RESOURCE_SOURCES}
 		${UTIL_CMDLINE_SOURCES}
-		${UTIL_MD5_SOURCES}
+		tools/unpak/UnPak.h
 		tools/unpak/UnPak.cpp
 	)
 	
-	if(WIN32)
-		create_version_resource(arxunpak "${VERSION_NAME} PAK File Unpacker")
-		create_application_manifest(arxunpak)
-		list(APPEND arxunpak_SOURCES ${arxunpak-version.rc} ${arxunpak.manifest})
-	endif()
-	
 	set(arxunpak_LIBRARIES ${BASE_LIBRARIES})
 	
-	add_executable_shared(arxunpak "${arxunpak_SOURCES}" "${arxunpak_LIBRARIES}")
+	if(BUILD_TOOLS_MERGED)
+		
+		set(arxtool_SOURCES
+			${arxsavetool_SOURCES}
+			${arxunpak_SOURCES}
+			tools/ToolMain.cpp
+		)
+		
+		set(arxtool_LIBRARIES
+			${arxsavetool_LIBRARIES}
+			${arxunpak_LIBRARIES}
+		)
+		
+		if(WIN32)
+			create_version_resource(arxtool "${VERSION_NAME} Tool")
+			create_application_manifest(arxtool)
+			list(APPEND arxtool_SOURCES ${arxtool-version.rc} ${arxtool.manifest})
+		endif()
+		
+		set(arxtool_main_SOURCES
+			tools/savetool/SaveTool.cpp
+			tools/unpak/UnPak.cpp
+			tools/ToolMain.cpp
+		)
+		
+		add_source_definitions("${arxtool_main_SOURCES}" -DARXTOOL)
+		
+		add_executable_shared(arxtool "${arxtool_SOURCES}" "${arxtool_LIBRARIES}")
+		
+		set_binary_installdir(arxtool "${CMAKE_INSTALL_LIBEXECDIR}")
+		add_binary_symlinks(arxtool arxsavetool arxunpak)
+		
+	else()
+		
+		if(WIN32)
+			create_version_resource(arxsavetool "${VERSION_NAME} Save File Tool")
+			create_application_manifest(arxsavetool)
+			list(APPEND arxsavetool_SOURCES ${arxsavetool-version.rc} ${arxsavetool.manifest})
+		endif()
+		
+		add_executable_shared(arxsavetool "${arxsavetool_SOURCES}" "${arxsavetool_LIBRARIES}")
+		
+		if(WIN32 AND NOT BUILD_TOOLS_MERGED)
+			create_version_resource(arxunpak "${VERSION_NAME} PAK File Unpacker")
+			create_application_manifest(arxunpak)
+			list(APPEND arxunpak_SOURCES ${arxunpak-version.rc} ${arxunpak.manifest})
+		endif()
+		
+		add_executable_shared(arxunpak "${arxunpak_SOURCES}" "${arxunpak_LIBRARIES}")
+		
+	endif()
 	
 endif()
 
@@ -1934,6 +1981,10 @@ if(BUILD_TOOLS)
 	        OPTIONAL)
 	install(FILES data/man/arxunpak.1 DESTINATION "${CMAKE_INSTALL_MANDIR}/man1"
 	        OPTIONAL)
+	if(BUILD_TOOLS_MERGED)
+		install(FILES data/man/arxtool.1 DESTINATION "${CMAKE_INSTALL_MANDIR}/man1"
+		        OPTIONAL)
+	endif()
 endif()
 if(INSTALL_SCRIPTS AND NOT WIN32)
 	install(FILES data/man/arx-install-data.1 DESTINATION "${CMAKE_INSTALL_MANDIR}/man1"

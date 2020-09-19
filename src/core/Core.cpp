@@ -57,6 +57,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include <boost/version.hpp>
 #include <boost/foreach.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 
 #include "Configure.h"
 
@@ -100,6 +101,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "graphics/GlobalFog.h"
 #include "graphics/GraphicsTypes.h"
 #include "graphics/Math.h"
+#include "graphics/Raycast.h"
 #include "graphics/Renderer.h"
 #include "graphics/Vertex.h"
 #include "graphics/data/TextureContainer.h"
@@ -115,6 +117,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "graphics/texture/TextureStage.h"
 
 #include "gui/Cursor.h"
+#include "gui/Dragging.h"
 #include "gui/Hud.h"
 #include "gui/Interface.h"
 #include "gui/LoadLevelScreen.h"
@@ -255,6 +258,10 @@ void runGame() {
 
 Entity * FlyingOverObject(const Vec2s & pos) {
 	
+	if(g_draggedEntity) {
+		return g_draggedEntity;
+	}
+	
 	// TODO do this properly!
 	if(player.torch && eMouseState == MOUSE_IN_TORCH_ICON) {
 		return player.torch;
@@ -273,25 +280,6 @@ Entity * FlyingOverObject(const Vec2s & pos) {
 	}
 	
 	return NULL;
-}
-
-static void PlayerLaunchArrow_Test(float aimratio, float poisonous, const Vec3f & pos, const Anglef & angle) {
-	
-	Vec3f vect = angleToVector(angle);
-	Vec3f position = pos;
-	float velocity = aimratio + 0.3f;
-
-	if(velocity < 0.9f)
-		velocity = 0.9f;
-	
-	glm::quat quat = angleToQuatForArrow(angle);
-
-	float wd = getEquipmentBaseModifier(IO_EQUIPITEM_ELEMENT_Damages);
-	// TODO Why ignore relative modifiers? Why not just use player.Full_damages?
-	
-	float damages = wd * (1.f + (player.m_skillFull.projectile + player.m_attributeFull.dexterity) * 0.02f);
-
-	ARX_THROWN_OBJECT_Throw(EntityHandle_Player, position, vect, quat, velocity, damages, poisonous);
 }
 
 void SetEditMode() {
@@ -347,7 +335,7 @@ void levelInit() {
 	if(LOAD_N_ERASE) {
 		CleanScriptLoadedIO();
 		RestoreInitialIOStatus();
-		DRAGINTER = NULL;
+		setDraggedEntity(NULL);
 	}
 	
 	ARX_SPELLS_ResetRecognition();
@@ -765,6 +753,8 @@ void ManageCombatModeAnimations() {
 				
 				if(player.m_bowAimRatio > 1.f)
 					player.m_bowAimRatio = 1.f;
+			} else {
+				player.m_bowAimRotation = Anglef();
 			}
 			
 			// Waiting and Receiving Strike Impulse
@@ -787,7 +777,90 @@ void ManageCombatModeAnimations() {
 			if(layer1.cur_anim == alist[ANIM_MISSILE_STRIKE_PART_2] && (layer1.flags & EA_ANIMEND)) {
 				changeAnimation(io, 1, alist[ANIM_MISSILE_STRIKE_CYCLE], EA_LOOP);
 				player.m_aimTime = PlatformDuration::ofRaw(1);
-			} else if(layer1.cur_anim == alist[ANIM_MISSILE_STRIKE_CYCLE] && !eeMousePressed1()) {
+			} else if(layer1.cur_anim == alist[ANIM_MISSILE_STRIKE_CYCLE]) {
+				
+				ActionPoint attach = GetActionPointIdx(arrowobj, "attach");
+				if(attach == ActionPoint()) {
+					attach = ActionPoint(arrowobj->origin);
+				}
+				
+				ActionPoint hit;
+				{
+					float maxdist = 0.f;
+					BOOST_FOREACH(const EERIE_ACTIONLIST & action, arrowobj->actionlist) {
+						if(!boost::starts_with(action.name, "hit_")) {
+							continue;
+						}
+						float dist = arx::distance2(arrowobj->vertexlist[attach.handleData()].v,
+						                            arrowobj->vertexlist[action.idx.handleData()].v);
+						if(dist > maxdist) {
+							hit = action.idx;
+							maxdist = dist;
+						}
+					}
+				}
+				if(hit == ActionPoint()) {
+					hit = attach;
+					float maxdist = 0.f;
+					for(size_t i = 1; i < arrowobj->vertexlist.size(); i++) {
+						float dist = arx::distance2(arrowobj->vertexlist[attach.handleData()].v,
+						                            arrowobj->vertexlist[i].v);
+						if(dist > maxdist) {
+							hit = ActionPoint(i);
+							maxdist = dist;
+						}
+					}
+				}
+				
+				// Start arrow at the center of the player and shoot it directly forwards
+				Vec3f pos = player.pos + Vec3f(0.f, 40.f, 0.f); // Start position for the arrow
+				Vec3f dir = angleToVector(player.angle); // Unit vector describing the arrow direction
+				
+				if(config.input.improvedBowAim) {
+					
+					// Use position and direction of the arrow object attached to the player while drawing the bow
+					// We need to manually transform the vertices here or we will be one frame behind
+					
+					ObjVertGroup leftAttach = GetActionPointGroup(io->obj, io->obj->fastaccess.left_attach);
+					arx_assert(leftAttach != ObjVertGroup());
+					
+					const Bone & bone2 = io->obj->m_skeleton->bones[leftAttach.handleData()];
+					TransformInfo t2(actionPointPosition(io->obj, io->obj->fastaccess.left_attach), bone2.anim.quat);
+					t2.pos = t2(arrowobj->vertexlist[arrowobj->origin].v - arrowobj->vertexlist[attach.handleData()].v);
+					
+					pos = t2(arrowobj->vertexlist[attach.handleData()].v);
+					dir = glm::normalize(t2(arrowobj->vertexlist[hit.handleData()].v) - pos);
+					
+					// Rotate the bow towards whatever the player is aiming at
+					
+					PolyType ignored = POLY_HIDE | POLY_TRANS | POLY_NODRAW | POLY_NOCOL;
+					RaycastFlags flags = RaycastIgnorePlayer;
+					Vec3f dest = g_playerCamera.m_pos + angleToVector(player.angle) * 100000.f;
+					if(RaycastResult result = raycastScene(g_playerCamera.m_pos, dest, ignored, flags)) {
+						dest = result.pos;
+					}
+					if(EntityRaycastResult result = raycastEntities(g_playerCamera.m_pos, dest, ignored, flags)) {
+						dest = result.pos;
+					}
+					
+					Anglef desired = vectorToAngle(dest - pos);
+					Anglef actual = unitVectorToAngle(dir);
+					
+					float t = g_platformTime.lastFrameDuration() / PlatformDurationMs(100) * player.m_bowAimRatio;
+					float dpitch = AngleDifference(actual.getPitch(), desired.getPitch()) * t;
+					float dyaw = AngleDifference(desired.getYaw(), actual.getYaw()) * t;
+					player.m_bowAimRotation.setPitch(glm::clamp(player.m_bowAimRotation.getPitch() + dpitch, -90.f, 90.f));
+					player.m_bowAimRotation.setYaw(glm::clamp(player.m_bowAimRotation.getYaw() + dyaw, -90.f, 90.f));
+					player.m_bowAimRotation.setRoll(0);
+					
+				}
+				
+				if(eeMousePressed1()) {
+					break;
+				}
+				
+				// Launch the arrow
+				
 				EERIE_LINKEDOBJ_UnLinkObjectFromObject(io->obj, arrowobj);
 				changeAnimation(io, 1, alist[ANIM_MISSILE_STRIKE]);
 				SendIOScriptEvent(NULL, io, SM_STRIKE, "bow");
@@ -818,33 +891,48 @@ void ManageCombatModeAnimations() {
 				if(sp_max && poisonous < 3.f)
 					poisonous = 3.f;
 				
-				Vec3f orgPos = player.pos + Vec3f(0.f, 40.f, 0.f);
-				
-				if(io->obj->fastaccess.left_attach != ActionPoint()) {
-					orgPos = actionPointPosition(io->obj, io->obj->fastaccess.left_attach);
+				if(!arrowobj || arrowobj->vertexlist.size() < 2) {
+					break;
 				}
 				
-				Anglef orgAngle = player.angle;
+				glm::quat quat; // Arrow object orientation relative to the arrow projectile direction
 				
-				PlayerLaunchArrow_Test(aimratio, poisonous, orgPos, orgAngle);
+				ObjVertGroup group = GetActionPointGroup(io->obj, io->obj->fastaccess.left_attach);
+				if(config.input.improvedBowAim && group != ObjVertGroup()) {
+					// Maintain arrow object orientation
+					// In practice this is the same as the alternative below except for additional roll around dir
+					quat = io->obj->m_skeleton->bones[group.handleData()].anim.quat;
+					quat = glm::inverse(getProjectileQuatFromVector(dir)) * quat;
+				} else {
+					// Orient arrow so that the hit_15 action point points forward
+					Vec3f pos0 = arrowobj->vertexlist[attach.handleData()].v;
+					Vec3f orientation = arrowobj->vertexlist[hit.handleData()].v - pos0;
+					quat = glm::inverse(getProjectileQuatFromVector(orientation));
+				}
+				
+				float velocity = std::max(aimratio + 0.3f, 0.9f);
+				
+				Vec3f vect = dir * velocity;
+				
+				// Apply downwards gravity if not fully charged
+				float gravity = 0.0002f * glm::clamp(1.f - aimratio, 0.f, 1.f);
+				
+				float wd = getEquipmentBaseModifier(IO_EQUIPITEM_ELEMENT_Damages);
+				// TODO Why ignore relative modifiers? Why not just use player.Full_damages?
+				
+				float damages = wd * (1.f + (player.m_skillFull.projectile + player.m_attributeFull.dexterity) * 0.02f);
+				
+				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect, gravity, arrowobj, attach, quat,
+				                        damages, poisonous);
 				
 				if(sp_max) {
-					Anglef angle;
-					Vec3f pos = player.pos + Vec3f(0.f, 40.f, 0.f);
-					
-					angle.setPitch(player.angle.getPitch());
-					angle.setYaw(player.angle.getYaw() + 8);
-					angle.setRoll(player.angle.getRoll());
-					PlayerLaunchArrow_Test(aimratio, poisonous, pos, angle);
-					angle.setPitch(player.angle.getPitch());
-					angle.setYaw(player.angle.getYaw() - 8);
-					PlayerLaunchArrow_Test(aimratio, poisonous, pos, angle);
-					angle.setPitch(player.angle.getPitch());
-					angle.setYaw(player.angle.getYaw() + 4.f);
-					PlayerLaunchArrow_Test(aimratio, poisonous, pos, angle);
-					angle.setPitch(player.angle.getPitch());
-					angle.setYaw(player.angle.getYaw() - 4.f);
-					PlayerLaunchArrow_Test(aimratio, poisonous, pos, angle);
+					for(int i = -2; i <= 2; i++) {
+						if(i != 0) {
+							Vec3f vect2 = VRotateY(vect, 4.f * float(i));
+							ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect2, gravity, arrowobj, attach, quat,
+							                        damages, poisonous);
+						}
+					}
 				}
 				
 				player.m_aimTime = 0;

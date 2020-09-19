@@ -61,6 +61,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "game/Item.h"
 #include "game/Player.h"
 
+#include "gui/Dragging.h"
 #include "gui/Interface.h"
 
 #include "graphics/GraphicsTypes.h"
@@ -86,10 +87,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 INVENTORY_SLOT g_inventory[INVENTORY_BAGS][INVENTORY_X][INVENTORY_Y];
 INVENTORY_DATA * SecondaryInventory = NULL;
-Entity * DRAGINTER = NULL;
 Entity * ioSteal = NULL;
-
-InventoryPos g_draggedItemPreviousPosition;
 
 INVENTORY_DATA::~INVENTORY_DATA() {
 	
@@ -140,8 +138,8 @@ void PutInFrontOfPlayer(Entity * io)
 	
 	io->angle = Anglef();
 	
-	if(DRAGINTER == io) {
-		Set_DragInter(NULL);
+	if(g_draggedEntity == io) {
+		setDraggedEntity(NULL);
 	}
 	
 	removeFromInventories(io);
@@ -403,6 +401,22 @@ private:
 			}
 		}
 		
+		Vec2f diff(glm::clamp(pos, Vec2f(0.f), Vec2f(width() - 1, height() - 1)) - Vec2f(start));
+		Vec2s neighbor(diff.x < 0 ? start.x - 1 : start.x + 1, diff.y < 0 ? start.y - 1 : start.y + 1);
+		neighbor = glm::clamp(neighbor, Vec2s(0), Vec2s(width() - 1, height() - 1));
+		for(int i = 0; i < 3; i++) {
+			bool xfirst = glm::abs(diff.x) > glm::abs(diff.y);
+			Pos::index_type x = (xfirst ? (i == 1) : (i == 0)) ? start.x : neighbor.x;
+			Pos::index_type y = (xfirst ? (i == 0) : (i == 1)) ? start.y : neighbor.y;
+			Pos p(handle(), bag, x, y);
+			if(insertIntoStackAt(item, p, true)) {
+				return p;
+			}
+			if(insertIntoNewSlotAt(item, p)) {
+				return p;
+			}
+		}
+		
 		return insertImpl(item, fallback);
 	}
 	
@@ -428,9 +442,9 @@ private:
 				}
 			}
 		}
-	
-		if(DRAGINTER == item) {
-			Set_DragInter(NULL);
+		
+		if(g_draggedEntity == item) {
+			setDraggedEntity(NULL);
 		}
 		
 		removeFromInventories(item);
@@ -922,8 +936,10 @@ Vec3f GetItemWorldPosition(const Entity * io) {
 	
 	arx_assert(io);
 	
-	if(DRAGINTER == io) {
+	if(g_draggedEntity == io) {
 		// Set position to approximate center of player.
+		// This is done even if the entity is being dragged in the world in order to avoid triggering
+		// any events until the entity is dropped.
 		return player.pos + Vec3f(0.f, 80.f, 0.f);
 	}
 
@@ -956,7 +972,7 @@ Vec3f GetItemWorldPositionSound(const Entity * io) {
 	
 	arx_assert(io);
 	
-	if(DRAGINTER == io) {
+	if(g_draggedEntity == io) {
 		return ARX_PLAYER_FrontPos();
 	}
 	

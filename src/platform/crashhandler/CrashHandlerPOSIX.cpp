@@ -64,6 +64,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/range/size.hpp>
 
@@ -151,7 +152,7 @@ static fs::path getCoreDumpFile() {
 	}
 	
 	if(pattern[0] == '|') {
-		if(pattern.find("/apport ") != std::string::npos) {
+		if(boost::contains(pattern, "/apport ")) {
 			// Ubuntu …
 			std::ostringstream oss;
 			oss << "/var/crash/";
@@ -458,6 +459,11 @@ void CrashHandlerPOSIX::handleCrash(int signal, void * info, void * context) {
 		m_pCrashInfo->hasStack = true;
 		m_pCrashInfo->frame = ctx->uc_mcontext.arm_fp;
 		m_pCrashInfo->hasFrame = true;
+		#elif ARX_ARCH == ARX_ARCH_ARM64
+		m_pCrashInfo->address =  ctx->uc_mcontext.pc;
+		m_pCrashInfo->hasAddress = true;
+		m_pCrashInfo->stack =  ctx->uc_mcontext.sp;
+		m_pCrashInfo->hasStack = true;
 		#else
 		ARX_UNUSED(ctx);
 		#endif

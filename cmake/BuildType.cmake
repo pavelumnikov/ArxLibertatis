@@ -30,7 +30,8 @@ if(MSVC)
 	if(FASTLINK)
 		
 		# Optimize for link speed in developer builds
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DEBUG:FASTLINK")
+		set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /DEBUG:FASTLINK")
+		set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DEBUG:FASTLINK")
 		
 	elseif(SET_OPTIMIZATION_FLAGS)
 		
@@ -129,7 +130,12 @@ if(MSVC)
 		
 		# Remove definition of _DEBUG as it might conflict with libs we're linking with
 		string(REGEX REPLACE "(^| )/D_DEBUG( |$)" "\\1" ${flag_var} "${${flag_var}}")
-		set(${flag_var} "${${flag_var}} /DNDEBUG")
+		
+		if(DEBUG)
+			string(REGEX REPLACE "(^| )/DNDEBUG( |$)" "\\1" ${flag_var} "${${flag_var}}")
+		else()
+			set(${flag_var} "${${flag_var}} /DNDEBUG")
+		endif()
 		
 		# Force compiler warning level
 		if(SET_WARNING_FLAGS)
@@ -392,6 +398,16 @@ else(MSVC)
 			# system
 			add_ldflag("-Wl,--as-needed")
 		endif()
+		
+		foreach(flag_var CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE)
+		
+			if(DEBUG)
+				string(REGEX REPLACE "(^| )-DNDEBUG( |$)" "\\1" ${flag_var} "${${flag_var}}")
+			else()
+				set(${flag_var} "${${flag_var}} -DNDEBUG")
+			endif()
+			
+		endforeach(flag_var)
 		
 		if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 			

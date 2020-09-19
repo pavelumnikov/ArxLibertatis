@@ -78,6 +78,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "graphics/effects/PolyBoom.h"
 #include "graphics/effects/Halo.h"
 
+#include "gui/Dragging.h"
+
 #include "math/Angle.h"
 #include "math/RandomVector.h"
 #include "math/Vector.h"
@@ -236,6 +238,10 @@ float Cedric_GetInvisibility(Entity * io) {
 		}
 	}
 	
+	if(io == g_draggedEntity && g_dragStatus != EntityDragStatus_OnGround) {
+		invisibility = glm::clamp(invisibility + 0.5f, 0.1f, 1.f);
+	}
+	
 	return invisibility;
 }
 
@@ -384,8 +390,9 @@ static void Cedric_PrepareHalo(EERIE_3DOBJ * eobj, Skeleton * obj) {
 		Vec3f t_vector = glm::inverse(qt1) * cam_vector;
 
 		// Get light value for each vertex
-		for(size_t v = 0; v != bone.idxvertices.size(); v++) {
-			size_t vertIndex = bone.idxvertices[v];
+		const std::vector<u32> & vertices = eobj->m_boneVertices[i];
+		for(size_t v = 0; v != vertices.size(); v++) {
+			size_t vertIndex = vertices[v];
 			const Vec3f & inVert = eobj->vertexlist[vertIndex].norm;
 
 			// Get cos angle between light and vertex norm
@@ -493,8 +500,9 @@ static void Cedric_ApplyLighting(ShaderLight lights[], size_t lightsCount, EERIE
 	for(size_t i = 0; i != obj->bones.size(); i++) {
 		const glm::quat & quat = obj->bones[i].anim.quat;
 		/* Get light value for each vertex */
-		for(size_t v = 0; v != obj->bones[i].idxvertices.size(); v++) {
-			size_t vertexIndex = obj->bones[i].idxvertices[v];
+		const std::vector<u32> & vertices = eobj->m_boneVertices[i];
+		for(size_t v = 0; v != vertices.size(); v++) {
+			size_t vertexIndex = vertices[v];
 			Vec3f & position = eobj->vertexWorldPositions[vertexIndex].v;
 			Vec3f normal = quat * eobj->vertexlist[vertexIndex].norm;
 			eobj->vertexColors[vertexIndex] = ApplyLight(lights, lightsCount, position, normal, colorMod);
@@ -708,7 +716,7 @@ void DrawEERIEInter_Render(EERIE_3DOBJ * eobj, const TransformInfo & t, Entity *
 			
 			const Vec3f & position = eobj->vertexWorldPositions[face.vid[n]].v;
 			Vec3f normal = t.rotation * (useFaceNormal ? face.norm : eobj->vertexlist[face.vid[n]].norm);
-			float diffuse = useFaceNormal? 0.5f : 1.f;
+			float diffuse = useFaceNormal ? 0.5f : 1.f;
 			
 			eobj->vertexColors[face.vid[n]] = ApplyLight(lights, lightsCount, position, normal, colorMod, diffuse);
 			
@@ -1366,8 +1374,9 @@ static void Cedric_TransformVerts(EERIE_3DOBJ * eobj) {
 
 		Vec3f vector = bone.anim.trans;
 
-		for(size_t v = 0; v != bone.idxvertices.size(); v++) {
-			size_t index = bone.idxvertices[v];
+		const std::vector<u32> & vertices = eobj->m_boneVertices[i];
+		for(size_t v = 0; v != vertices.size(); v++) {
+			size_t index = vertices[v];
 
 			Vec3f & inVert = eobj->vertexlocal[index];
 			EERIE_VERTEX & outVert = eobj->vertexWorldPositions[index];
@@ -1378,6 +1387,84 @@ static void Cedric_TransformVerts(EERIE_3DOBJ * eobj) {
 		}
 	}
 	
+}
+
+static void animateSkeleton(EERIE_3DOBJ * eobj, AnimLayer * animlayer,
+                             const Anglef & angle, const Vec3f & pos, float scale, Vec3f ftr,
+                             Entity * io, Skeleton & skeleton, AnimationBlendStatus * animBlend) {
+	
+	glm::quat rotation;
+	bool isNpc = io && (io->ioflags & IO_NPC);
+	if(!isNpc) {
+		// To correct invalid angle in Animated FIX/ITEMS
+		rotation = toQuaternion(angle);
+	} else {
+		rotation = QuatFromAngles(angle);
+	}
+	
+	EERIE_EXTRA_ROTATE * extraRotation = NULL;
+	
+	if(io && (io->ioflags & IO_NPC) && io->_npcdata->ex_rotate) {
+		extraRotation = io->_npcdata->ex_rotate;
+	}
+	
+	EERIE_EXTRA_SCALE extraScale;
+	
+	if(BH_MODE && eobj->fastaccess.head_group != ObjVertGroup()) {
+		extraScale.groupIndex = eobj->fastaccess.head_group;
+		extraScale.scale = Vec3f(1.f);
+	}
+	
+	// Initialize the rig
+	for(size_t i = 0; i != skeleton.bones.size(); i++) {
+		Bone & bone = skeleton.bones[i];
+		bone.init.quat = quat_identity();
+		bone.init.trans = bone.transinit_global;
+	}
+	
+	// Apply Extra Rotations in Local Space
+	if(extraRotation) {
+		for(size_t k = 0; k < MAX_EXTRA_ROTATE; k++) {
+			ObjVertGroup i = extraRotation->group_number[k];
+			if(i != ObjVertGroup()) {
+				size_t boneIndex = size_t(i.handleData());
+				skeleton.bones[boneIndex].init.quat = angleToQuatForExtraRotation(extraRotation->group_rotate[k]);
+			}
+		}
+	}
+	
+	// Perform animation in Local space
+	Cedric_AnimateObject(&skeleton, animlayer);
+	
+	if(extraScale.groupIndex != ObjVertGroup()) {
+		size_t boneIndex = size_t(extraScale.groupIndex.handleData());
+		Bone & bone = skeleton.bones[boneIndex];
+		bone.init.scale += extraScale.scale;
+	}
+	
+	// Check for Animation Blending in Local space
+	if(io) {
+		// Is There any Between-Animations Interpolation to make ?
+		Cedric_BlendAnimation(skeleton, animBlend);
+		for(size_t i = 0; i < skeleton.bones.size(); i++) {
+			skeleton.bones[i].last = skeleton.bones[i].init;
+		}
+	}
+	
+	// Build skeleton in Object Space
+	TransformInfo t(pos, rotation, scale);
+	t.pos = t(ftr);
+	Cedric_ConcatenateTM(skeleton, t);
+	
+}
+
+void animateSkeleton(Entity * entity, AnimLayer * animlayer, Skeleton & skeleton) {
+	
+	Vec3f ftr = Vec3f(0.f);
+	
+	AnimationBlendStatus animBlend = entity->animBlend;
+	
+	animateSkeleton(entity->obj, animlayer, entity->angle, entity->pos, entity->scale, ftr, entity, skeleton, &animBlend);
 }
 
 void EERIEDrawAnimQuatUpdate(EERIE_3DOBJ * eobj,
@@ -1412,92 +1499,25 @@ void EERIEDrawAnimQuatUpdate(EERIE_3DOBJ * eobj,
 				PrepareAnim(layer, time, io);
 		}
 	}
-
+	
 	// Set scale and invisibility factors
 	// Scaling Value for this object (Movements will also be scaled)
 	float scale = (io) ? io->scale : 1.f;
-
+	
 	// Only layer 0 controls movement
 	Vec3f ftr = CalcTranslation(animlayer[0]);
-
-
-	if(update_movement)
+	
+	if(update_movement) {
 		StoreEntityMovement(io, ftr, scale);
-
-	if(io && io != entities.player() && !Cedric_IO_Visible(io->pos))
+	}
+	
+	if(io && io != entities.player() && !Cedric_IO_Visible(io->pos)) {
 		return;
-
-	glm::quat rotation;
-
-	bool isNpc = io && (io->ioflags & IO_NPC);
-	if(!isNpc) {
-		// To correct invalid angle in Animated FIX/ITEMS
-		rotation = glm::quat_cast(toRotationMatrix(angle));
-	} else {
-		rotation = QuatFromAngles(angle);
 	}
-
-	EERIE_EXTRA_ROTATE * extraRotation = NULL;
-
-	if(io && (io->ioflags & IO_NPC) && io->_npcdata->ex_rotate) {
-		extraRotation = io->_npcdata->ex_rotate;
-	}
-
-	EERIE_EXTRA_SCALE extraScale;
-
-	if(BH_MODE && eobj->fastaccess.head_group != ObjVertGroup()) {
-		extraScale.groupIndex = eobj->fastaccess.head_group;
-		extraScale.scale = Vec3f(1.f);
-	}
-
+	
 	arx_assert(eobj->m_skeleton);
-	Skeleton & skeleton = *eobj->m_skeleton;
-
-	// Initialize the rig
-	for(size_t i = 0; i != skeleton.bones.size(); i++) {
-		Bone & bone = skeleton.bones[i];
-
-		bone.init.quat = quat_identity();
-		bone.init.trans = bone.transinit_global;
-	}
+	animateSkeleton(eobj, animlayer, angle, pos, scale, ftr, io, *eobj->m_skeleton, io ? &io->animBlend : NULL);
 	
-	// Apply Extra Rotations in Local Space
-	if(extraRotation) {
-		for(size_t k = 0; k < MAX_EXTRA_ROTATE; k++) {
-			ObjVertGroup i = extraRotation->group_number[k];
-
-			if(i != ObjVertGroup()) {
-				size_t boneIndex = size_t(i.handleData());
-				skeleton.bones[boneIndex].init.quat = angleToQuatForExtraRotation(extraRotation->group_rotate[k]);
-			}
-		}
-	}
-
-	// Perform animation in Local space
-	Cedric_AnimateObject(&skeleton, animlayer);
-
-	if(extraScale.groupIndex != ObjVertGroup()) {
-		size_t boneIndex = size_t(extraScale.groupIndex.handleData());
-		Bone & bone = skeleton.bones[boneIndex];
-
-		bone.init.scale += extraScale.scale;
-	}
-	
-	// Check for Animation Blending in Local space
-	if(io) {
-		// Is There any Between-Animations Interpolation to make ?
-		Cedric_BlendAnimation(skeleton, &io->animBlend);
-		
-		for(size_t i = 0; i < skeleton.bones.size(); i++) {
-			skeleton.bones[i].last = skeleton.bones[i].init;
-		}
-	}
-	
-	// Build skeleton in Object Space
-	TransformInfo t(pos, rotation, scale);
-	t.pos = t(ftr);
-	Cedric_ConcatenateTM(skeleton, t);
-
 	Cedric_TransformVerts(eobj);
 	if(io) {
 		io->bbox3D = UpdateBbox3d(eobj);

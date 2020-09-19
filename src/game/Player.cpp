@@ -80,6 +80,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "game/effect/Quake.h"
 
 #include "gui/CharacterCreation.h"
+#include "gui/Dragging.h"
 #include "gui/Hud.h"
 #include "gui/Menu.h"
 #include "gui/Text.h"
@@ -248,8 +249,8 @@ void ARX_PLAYER_KillTorch() {
 	lightHandleGet(torchLightHandle)->m_exists = false;
 }
 
-void ARX_PLAYER_ClickedOnTorch(Entity * io)
-{
+void ARX_PLAYER_ClickedOnTorch(Entity * io) {
+	
 	if(!io)
 		return;
 
@@ -277,10 +278,13 @@ void ARX_PLAYER_ClickedOnTorch(Entity * io)
 		removeFromInventories(io);
 		io->show = SHOW_FLAG_ON_PLAYER;
 		player.torch = io;
-
-		if(DRAGINTER == io)
-			DRAGINTER = NULL;
+		
+		if(g_draggedEntity == io) {
+			setDraggedEntity(NULL);
+		}
+		
 	}
+	
 }
 
 static void ARX_PLAYER_ManageTorch() {
@@ -1160,6 +1164,8 @@ void ARX_PLAYER_LoadHeroAnimsAndMesh(){
 		io->_npcdata->ex_rotate->group_number[1] = EERIE_OBJECT_GetGroup(io->obj, "neck");
 		io->_npcdata->ex_rotate->group_number[2] = EERIE_OBJECT_GetGroup(io->obj, "chest");
 		io->_npcdata->ex_rotate->group_number[3] = EERIE_OBJECT_GetGroup(io->obj, "belt");
+		io->_npcdata->ex_rotate->group_number[4] = EERIE_OBJECT_GetGroup(io->obj, "left_shoulder");
+		io->_npcdata->ex_rotate->group_number[5] = EERIE_OBJECT_GetGroup(io->obj, "right_shoulder");
 		for(size_t n = 0; n < MAX_EXTRA_ROTATE; n++) {
 			io->_npcdata->ex_rotate->group_rotate[n] = Anglef();
 		}
@@ -1693,23 +1699,29 @@ void ARX_PLAYER_Frame_Update()
 
 		if(player.Interface & INTER_COMBATMODE) {
 			if (ARX_EQUIPMENT_GetPlayerWeaponType() == WEAPON_BOW) {
-				extraRotation->group_rotate[0].setPitch(0); // Head
-				extraRotation->group_rotate[1].setPitch(0); // Neck
-				extraRotation->group_rotate[2].setPitch(0); // Chest
-				extraRotation->group_rotate[3].setPitch(v); // Belt
+				extraRotation->group_rotate[0] = Anglef(); // Head
+				extraRotation->group_rotate[1] = Anglef(); // Neck
+				extraRotation->group_rotate[2] = Anglef(); // Chest
+				extraRotation->group_rotate[3] = Anglef(v, 0.f, 0.f); // Belt
+				// Apply fine aim with the shoulders so that we don't affect the view position
+				extraRotation->group_rotate[4] = player.m_bowAimRotation; // Left shoulder
+				extraRotation->group_rotate[5] = player.m_bowAimRotation; // Right shoulder
+				
 			} else {
-				v *= 0.1f;
-				extraRotation->group_rotate[0].setPitch(v); // Head
-				extraRotation->group_rotate[1].setPitch(v); // Neck
-				extraRotation->group_rotate[2].setPitch(v * 4); // Chest
-				extraRotation->group_rotate[3].setPitch(v * 4); // Belt
+				extraRotation->group_rotate[0] = Anglef(v * 0.1f, 0.f, 0.f); // Head
+				extraRotation->group_rotate[1] = Anglef(v * 0.1f, 0.f, 0.f); // Neck
+				extraRotation->group_rotate[2] = Anglef(v * 0.4f, 0.f, 0.f); // Chest
+				extraRotation->group_rotate[3] = Anglef(v * 0.4f, 0.f, 0.f); // Belt
+				extraRotation->group_rotate[4] = Anglef(); // Left shoulder
+				extraRotation->group_rotate[5] = Anglef(); // Right
 			}
 		} else {
-			v *= 0.25f;
-			extraRotation->group_rotate[0].setPitch(v); // Head
-			extraRotation->group_rotate[1].setPitch(v); // Neck
-			extraRotation->group_rotate[2].setPitch(v); // Chest
-			extraRotation->group_rotate[3].setPitch(v); // Belt
+			extraRotation->group_rotate[0] = Anglef(v * 0.25f, 0.f, 0.f); // Head
+			extraRotation->group_rotate[1] = Anglef(v * 0.25f, 0.f, 0.f); // Neck
+			extraRotation->group_rotate[2] = Anglef(v * 0.25f, 0.f, 0.f); // Chest
+			extraRotation->group_rotate[3] = Anglef(v * 0.25f, 0.f, 0.f); // Belt
+			extraRotation->group_rotate[4] = Anglef(); // Left shoulder
+			extraRotation->group_rotate[5] = Anglef(); // Right shoulder
 		}
 	}
 
@@ -2614,7 +2626,7 @@ void ARX_GAME_Reset() {
 	// Interface
 	ARX_INTERFACE_Reset();
 	ARX_INTERFACE_NoteClear();
-	Set_DragInter(NULL);
+	setDraggedEntity(NULL);
 	g_cameraEntity = NULL;
 	CHANGE_LEVEL_ICON = NoChangeLevel;
 	

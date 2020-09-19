@@ -23,9 +23,12 @@
 
 #include <boost/foreach.hpp>
 
+#include "game/Entity.h"
+#include "game/EntityManager.h"
 #include "graphics/data/Mesh.h"
 #include "platform/Platform.h"
 #include "platform/profiler/Profiler.h"
+#include "scene/Interactive.h"
 
 void dbg_addRay(Vec3f start, Vec3f end);
 void dbg_addTile(Vec2i tile);
@@ -157,43 +160,18 @@ static float linePolyIntersection(const Vec3f & start, const Vec3f & dir, const 
 
 namespace {
 
-struct AnyHitRaycast {
-	
-	bool operator()(const Vec3f & start, const Vec3f & end, const Vec2i & tile) {
-		
-		Vec3f dir = end - start;
-		
-		const BackgroundTileData & eg = ACTIVEBKG->m_tileData[tile.x][tile.y];
-		BOOST_FOREACH(EERIEPOLY * ep, eg.polyin) {
-			
-			if(ep->type & POLY_TRANS) {
-				continue;
-			}
-			
-			float relDist = linePolyIntersection(start, dir, *ep);
-			if(relDist <= 1.f) {
-				Vec3f hitPos = start + relDist * dir;
-				dbg_addPoly(ep, hitPos, Color::green);
-				return true;
-			}
-			
-		}
-		
-		return false;
-	}
-	
-};
-
 struct ClosestHitRaycast {
 	
 	float closestHit;
 	EERIEPOLY * hitPoly;
 	const PolyType ignoredTypes;
+	const bool anyHit;
 	
-	ClosestHitRaycast(PolyType ignored)
+	explicit ClosestHitRaycast(PolyType ignored, RaycastFlags flags)
 		: closestHit(std::numeric_limits<float>::max())
 		, hitPoly(NULL)
 		, ignoredTypes(ignored)
+		, anyHit(flags.has(RaycastAnyHit))
 	{ }
 	
 	bool operator()(const Vec3f & start, const Vec3f & end, const Vec2i & tile) {
@@ -225,6 +203,10 @@ struct ClosestHitRaycast {
 			return false;
 		}
 		
+		if(anyHit) {
+			return true;
+		}
+		
 		// Determine hit grid cell coordinates
 		const Vec2f cellSide = g_backgroundTileSize;
 		Vec3f hitPos = start + closestHit * dir;
@@ -238,30 +220,11 @@ struct ClosestHitRaycast {
 	
 };
 
-
 } // anonymous namespace
 
-
-bool RaycastLightFlare(const Vec3f & start, const Vec3f & end) {
-	
-	ARX_PROFILE_FUNC();
-	
-	// Ignore hits too close to target.
-	// Lights are often inside geometry
-	Vec3f dir = end - start;
-	float length = glm::length(dir);
-	if(length <= 20.f) {
-		return false;
-	}
-	dir *= (length - 20.f) / length;
-	
-	return WalkTiles(start, start + dir, AnyHitRaycast());
-}
-
-
-RaycastResult RaycastLine(const Vec3f & start, const Vec3f & end, PolyType ignored) {
+RaycastResult raycastScene(const Vec3f & start, const Vec3f & end, PolyType ignored, RaycastFlags flags) {
 	dbg_addRay(start, end);
-	ClosestHitRaycast raycast(ignored);
+	ClosestHitRaycast raycast(ignored, flags);
 	// TODO With C++11 we can change argument to F && instead of
 	// explicitly specifying the reference type
 	WalkTiles<ClosestHitRaycast &>(start, end, raycast);
@@ -275,6 +238,92 @@ RaycastResult RaycastLine(const Vec3f & start, const Vec3f & end, PolyType ignor
 	return RaycastResult();
 }
 
+EntityRaycastResult raycastEntities(const Vec3f & start, const Vec3f & end,
+                                    PolyType ignored, RaycastFlags flags) {
+	
+	Vec3f dir = end - start;
+	Vec3f invdir = 1.f / dir;
+	
+	Entity * hitEntity = NULL;
+	EERIE_FACE * hitFace = NULL;
+	float t = std::numeric_limits<float>::max();
+	
+	for(size_t i = (flags & RaycastIgnorePlayer) ? 1 : 0; i < entities.size(); i++) {
+		const EntityHandle handle = EntityHandle(i);
+		Entity * entity = entities[handle];
+		
+		if(!entity
+		   || !entity->obj
+		   || !(entity->gameFlags & GFLAG_ISINTREATZONE)
+		   || (entity->gameFlags & (GFLAG_INVISIBILITY | GFLAG_MEGAHIDE))
+		   || (entity->ioflags & (IO_CAMERA | IO_MARKER))) {
+			continue;
+		}
+		
+		switch(entity->show) {
+			case SHOW_FLAG_LINKED:       break;
+			case SHOW_FLAG_IN_SCENE:     break;
+			case SHOW_FLAG_TELEPORTING:  break;
+			case SHOW_FLAG_ON_PLAYER: {
+				if(!(flags & RaycastIgnorePlayer) && IsEquipedByPlayer(entity)) {
+					break;
+				}
+				continue;
+			}
+			default: continue;
+		}
+		
+		const EERIE_3D_BBOX & box = entity->bbox3D;
+		
+		Vec3f min = (box.min - start) * invdir;
+		Vec3f max = (box.max - start) * invdir;
+		
+		Vec3f zmax = glm::max(min, max);
+		float tmax = glm::min(glm::min(zmax.x, zmax.y), zmax.z);
+		if(tmax < 0) {
+			continue;
+		}
+		
+		Vec3f zmin = glm::min(min, max);
+		float tmin = glm::max(glm::max(zmin.x, zmin.y), zmin.z);
+		if(tmin > tmax || tmin > t) {
+			continue;
+		}
+		
+		BOOST_FOREACH(EERIE_FACE & face, entity->obj->facelist) {
+			
+			if(face.facetype & ignored) {
+				continue;
+			}
+			
+			Vec3f v0 = entity->obj->vertexWorldPositions[face.vid[0]].v;
+			Vec3f v1 = entity->obj->vertexWorldPositions[face.vid[1]].v;
+			Vec3f v2 = entity->obj->vertexWorldPositions[face.vid[2]].v;
+			
+			Vec3f hit;
+			if(arx::intersectLineTriangle(start, dir, v0, v1, v2, hit)) {
+				if(hit.x >= 0.f && hit.x <= 1.f && hit.x < t) {
+					hitEntity  = entity;
+					hitFace = &face;
+					t = hit.x;
+					if(flags & RaycastAnyHit) {
+						Vec3f hitPos = start + t * dir;
+						return EntityRaycastResult(hitEntity, hitFace, hitPos);
+					}
+				}
+			}
+			
+		}
+		
+	}
+	
+	if(t <= 1.f) {
+		Vec3f hitPos = start + t * dir;
+		return EntityRaycastResult(hitEntity, hitFace, hitPos);
+	}
+	
+	return EntityRaycastResult();
+}
 
 #ifndef RAYCAST_DEBUG
 

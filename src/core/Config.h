@@ -123,9 +123,6 @@ class Config {
 	
 public:
 	
-	// section 'language'
-	std::string language;
-	
 	// section 'video'
 	struct {
 		
@@ -139,6 +136,8 @@ public:
 		int fpsLimit;
 		
 		float fov;
+		bool viewBobbing;
+		bool screenShake;
 		
 		int levelOfDetail;
 		float fogDistance;
@@ -154,6 +153,8 @@ public:
 	
 	// section 'interface'
 	struct {
+		
+		std::string language;
 		
 		bool showCrosshair;
 		
@@ -187,6 +188,8 @@ public:
 	// section 'audio'
 	struct {
 		
+		std::string language;
+		
 		std::string backend;
 		std::string device;
 		
@@ -213,6 +216,7 @@ public:
 		bool rawMouseInput;
 		bool borderTurning;
 		bool useAltRuneRecognition;
+		bool improvedBowAim;
 		QuickLevelTransition quickLevelTransition;
 		bool allowConsole;
 		

@@ -32,6 +32,7 @@
 #include <boost/static_assert.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/math/special_functions/fpclassify.hpp>
+#include <boost/range/size.hpp>
 
 #include "audio/openal/OpenALSource.h"
 #include "audio/openal/OpenALUtils.h"
@@ -99,28 +100,6 @@ OpenALBackend::~OpenALBackend() {
 		}
 	}
 }
-
-#if ARX_HAVE_OPENAL_EFX
-namespace {
-class al_function_ptr {
-	void * m_func;
-public:
-	explicit al_function_ptr(void * func) : m_func(func) { }
-	template <typename T>
-	operator T() {
-		#if __cplusplus < 201402L && defined(__GNUC__)
-		// ignore warning: ISO C++ forbids casting between pointer-to-function and pointer-to-object
-		T funcptr;
-		BOOST_STATIC_ASSERT(sizeof(funcptr) == sizeof(m_func));
-		std::memcpy(&funcptr, &m_func, sizeof(funcptr));
-		return funcptr;
-		#else
-		return reinterpret_cast<T>(m_func);
-		#endif
-	}
-};
-} // anonymous namespace
-#endif
 
 static const char * const deviceNamePrefixOpenALSoft = "OpenAL Soft on ";
 
@@ -203,6 +182,8 @@ void OpenALBackend::fillDeviceAttributes(ALCint (&attrs)[3]) {
 	
 	attrs[i++] = 0;
 	
+	arx_assert(i <= size_t(boost::size(attrs)));
+	
 }
 
 static const char * getHRTFStatusString(HRTFStatus status) {
@@ -250,7 +231,7 @@ aalError OpenALBackend::init(const char * requestedDeviceName, HRTFAttribute hrt
 	m_hasHRTF = (alcIsExtensionPresent(device, "ALC_SOFT_HRTF") != ALC_FALSE);
 	if(m_hasHRTF) {
 		#define ARX_AL_LOAD_FUNC(Name) \
-			Name = al_function_ptr(alGetProcAddress(ARX_STR(Name))); \
+			Name = FunctionPointer(alGetProcAddress(ARX_STR(Name))); \
 			hasEFX = hasEFX && Name != NULL
 		ARX_AL_LOAD_FUNC(alcResetDeviceSOFT);
 		#undef ARX_AL_LOAD_FUNC
@@ -274,7 +255,7 @@ aalError OpenALBackend::init(const char * requestedDeviceName, HRTFAttribute hrt
 	hasEFX = (alcIsExtensionPresent(device, "ALC_EXT_EFX") != ALC_FALSE);
 	if(hasEFX) {
 		#define ARX_AL_LOAD_FUNC(Name) \
-			Name = al_function_ptr(alGetProcAddress(ARX_STR(Name))); \
+			Name = FunctionPointer(alGetProcAddress(ARX_STR(Name))); \
 			hasEFX = hasEFX && Name != NULL
 		ARX_AL_LOAD_FUNC(alGenEffects);
 		ARX_AL_LOAD_FUNC(alDeleteEffects);
@@ -684,6 +665,10 @@ aalError OpenALBackend::setHRTFEnabled(HRTFAttribute enable) {
 		return AAL_OK;
 	}
 	m_HRTFAttribute = enable;
+	
+	if(!device) {
+		return AAL_OK;
+	}
 	
 	OpenALEnvironmentOverrides overrides;
 	platform::EnvironmentLock lock(overrides.m_overrides);

@@ -30,6 +30,7 @@
 #include "graphics/Draw.h"
 #include "graphics/data/TextureContainer.h"
 #include "gui/Cursor.h"
+#include "gui/Dragging.h"
 #include "gui/Hud.h"
 #include "gui/Interface.h"
 #include "gui/hud/HudCommon.h"
@@ -68,9 +69,8 @@ void SecondaryInventoryPickAllHudIcon::updateInput() {
 			g_secondaryInventoryHud.takeAllItems();
 		}
 		
-		if(DRAGINTER == NULL)
-			return;
 	}
+	
 }
 
 
@@ -330,7 +330,9 @@ Entity * SecondaryInventoryHud::getObj(const Vec2s & pos) {
 
 void SecondaryInventoryHud::dropEntity() {
 	
-	if(!SecondaryInventory || !g_secondaryInventoryHud.containsPos(DANAEMouse)) {
+	Vec2s mouse = DANAEMouse + Vec2s(g_draggedIconOffset);
+	
+	if(!SecondaryInventory || !g_secondaryInventoryHud.containsPos(mouse)) {
 		return;
 	}
 	
@@ -338,17 +340,18 @@ void SecondaryInventoryHud::dropEntity() {
 	
 	if(io->ioflags & IO_SHOP) {
 		
-		if(!io->shop_category.empty() && DRAGINTER->groups.find(io->shop_category) == DRAGINTER->groups.end()) {
+		if(!io->shop_category.empty()
+		   && g_draggedEntity->groups.find(io->shop_category) == g_draggedEntity->groups.end()) {
 			// Item not allowed by shop category
 			return;
 		}
 		
-		long price = ARX_INTERACTIVE_GetSellValue(DRAGINTER, io, DRAGINTER->_itemdata->count);
+		long price = ARX_INTERACTIVE_GetSellValue(g_draggedEntity, io, g_draggedEntity->_itemdata->count);
 		if(price <= 0) {
 			return;
 		}
 		
-		if(insertIntoInventory(DRAGINTER, io)) {
+		if(insertIntoInventory(g_draggedEntity, io)) {
 			ARX_PLAYER_AddGold(price);
 			ARX_SOUND_PlayInterface(g_snd.GOLD);
 			ARX_SOUND_PlayInterface(g_snd.INVSTD);
@@ -358,9 +361,9 @@ void SecondaryInventoryHud::dropEntity() {
 	}
 	
 	s16 itemPitch = s16(32.f * m_scale);
-	Vec2f pos = Vec2f(DANAEMouse - Vec2s(2 * m_scale - m_fadePosition, 13 * m_scale)) / float(itemPitch);
+	Vec2f pos = Vec2f(mouse - Vec2s(2 * m_scale - m_fadePosition, 13 * m_scale)) / float(itemPitch);
 	
-	insertIntoInventoryAt(DRAGINTER, io, 0, pos, g_draggedItemPreviousPosition);
+	insertIntoInventoryAt(g_draggedEntity, io, 0, pos, g_draggedItemPreviousPosition);
 	
 }
 
@@ -368,7 +371,12 @@ void SecondaryInventoryHud::dragEntity(Entity * io) {
 	
 	arx_assert(SecondaryInventory);
 	arx_assert(io->ioflags & IO_ITEM);
-	arx_assert(locateInInventories(io).io == SecondaryInventory->io->index());
+	
+	InventoryPos pos = locateInInventories(io);
+	arx_assert(pos.io == SecondaryInventory->io->index());
+	Vec2s anchor = Vec2s(2 * m_scale - m_fadePosition, 13 * m_scale);
+	s16 itemPitch = s16(32.f * m_scale);
+	Vec2f offset(anchor + Vec2s(pos.x, pos.y) * itemPitch - DANAEMouse);
 	
 	// For shops, check if the player can afford the item and deduct the cost
 	Entity * ioo = SecondaryInventory->io;
@@ -385,6 +393,8 @@ void SecondaryInventoryHud::dragEntity(Entity * io) {
 		
 	}
 	
+	ARX_SOUND_PlayInterface(g_snd.INVSTD);
+	
 	// Take only one item from stacks unless requested otherwise
 	if(io->_itemdata->count > 1
 	   && ((ioo->ioflags & IO_SHOP) || !GInput->actionPressed(CONTROLS_CUST_STEALTHMODE))) {
@@ -392,21 +402,24 @@ void SecondaryInventoryHud::dragEntity(Entity * io) {
 		unstackedEntity->scriptload = 1;
 		unstackedEntity->_itemdata->count = 1;
 		io->_itemdata->count--;
-		ARX_SOUND_PlayInterface(g_snd.INVSTD);
-		Set_DragInter(unstackedEntity);
+		setDraggedEntity(unstackedEntity);
 		g_draggedItemPreviousPosition = locateInInventories(io);
+		g_draggedIconOffset = offset;
 		ARX_INVENTORY_IdentifyIO(unstackedEntity);
 		return;
 	}
 	
-	Set_DragInter(io);
+	setDraggedEntity(io);
+	g_draggedIconOffset = offset;
 	ARX_INVENTORY_IdentifyIO(io);
 	
 }
 
 void SecondaryInventoryHud::open(Entity * container) {
 	
-	arx_assert(!container || container->inventory);
+	if(container && !container->inventory) {
+		container = NULL;
+	}
 	
 	if(!container || SecondaryInventory == container->inventory) {
 		if(SecondaryInventory && SecondaryInventory->io)

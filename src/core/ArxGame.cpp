@@ -142,6 +142,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "io/fs/Filesystem.h"
 #include "io/fs/SystemPaths.h"
 #include "io/resource/PakReader.h"
+#include "io/resource/ResourceSetup.h"
 #include "io/Screenshot.h"
 #include "io/log/CriticalLogger.h"
 #include "io/log/Logger.h"
@@ -341,11 +342,8 @@ bool ArxGame::initConfig() {
 	LogInfo << "Using config file " << configFile;
 	if(!config.init(configFile)) {
 		
-		fs::path file = fs::findDataFile("cfg_default.ini");
-		if(!config.init(file)) {
-			LogWarning << "Could not read config files cfg.ini and cfg_default.ini,"
-			           << " using defaults";
-		}
+		LogWarning << "Could not read config files cfg.ini and cfg_default.ini,"
+		           << " using defaults";
 		
 		// Save a default config file so users have a chance to edit it even if we crash.
 		config.save();
@@ -418,7 +416,9 @@ bool ArxGame::initWindow(RenderWindow * window) {
 			mode = *i;
 		}
 		if(config.video.mode != mode) {
-			LogWarning << "Fullscreen mode " << config.video.mode << " not supported, using " << mode << " instead";
+			if(config.video.mode.resolution != mode.resolution || config.video.mode.refresh != 0) {
+				LogWarning << "Fullscreen mode " << config.video.mode << " not supported, using " << mode << " instead";
+			}
 			config.video.mode = mode;
 		}
 	}
@@ -903,18 +903,12 @@ bool ArxGame::initGame()
 	
 	GLOBAL_EERIETEXTUREFLAG_LOADSCENE_RELEASE = old;
 	
+	g_playerBook.stats.loadStrings();
+	
 	m_gameInitialized = true;
 	
 	return true;
 }
-
-static const char * default_paks[][2] = {
-	{ "data.pak", NULL },
-	{ "loc.pak", "loc_default.pak" },
-	{ "data2.pak", NULL },
-	{ "sfx.pak", NULL },
-	{ "speech.pak", "speech_default.pak" },
-};
 
 #if ARX_PLATFORM != ARX_PLATFORM_WIN32
 static void runDataFilesInstaller() {
@@ -933,25 +927,7 @@ bool ArxGame::addPaks() {
 	
 	g_resources = new PakReader;
 	
-	// Load required pak files
-	bool missing = false;
-	for(size_t i = 0; i < size_t(boost::size(default_paks)); i++) {
-		if(g_resources->addArchive(fs::findDataFile(default_paks[i][0]))) {
-			continue;
-		}
-		if(default_paks[i][1] && g_resources->addArchive(fs::findDataFile(default_paks[i][1]))) {
-			continue;
-		}
-		std::ostringstream oss;
-		oss << "Missing required data file: \"" << default_paks[i][0] << "\"";
-		if(default_paks[i][1]) {
-			oss << " (or \"" << default_paks[i][1] << "\")";
-		}
-		LogError << oss.str();
-		missing = true;
-	}
-	
-	if(missing) {
+	if(!addDefaultResources(g_resources)) {
 		
 		// Print the search path to the log
 		std::ostringstream oss;
@@ -976,17 +952,6 @@ bool ArxGame::addPaks() {
 		LogCritical << oss.str();
 		
 		return false;
-	}
-	
-	// Load optional patch files
-	BOOST_REVERSE_FOREACH(const fs::path & base, fs::getDataDirs()) {
-		g_resources->addFiles(base / "editor", "editor");
-		g_resources->addFiles(base / "game", "game");
-		g_resources->addFiles(base / "graph", "graph");
-		g_resources->addFiles(base / "localisation", "localisation");
-		g_resources->addFiles(base / "misc", "misc");
-		g_resources->addFiles(base / "sfx", "sfx");
-		g_resources->addFiles(base / "speech", "speech");
 	}
 	
 	return true;
@@ -1304,7 +1269,7 @@ void ArxGame::doFrame() {
 }
 
 void ArxGame::updateFirstPersonCamera() {
-
+	
 	arx_assert(entities.player());
 	
 	Entity * io = entities.player();
@@ -1350,10 +1315,33 @@ void ArxGame::updateFirstPersonCamera() {
 		
 		g_playerCamera.angle = player.angle;
 		
-		ActionPoint id = entities.player()->obj->fastaccess.view_attach;
+		ActionPoint id = io->obj->fastaccess.view_attach;
 		if(id != ActionPoint()) {
 			
-			g_playerCamera.m_pos = actionPointPosition(entities.player()->obj, id);
+			g_playerCameraStablePos = g_playerCamera.m_pos = actionPointPosition(io->obj, id);
+			
+			ObjVertGroup viewGroup = GetActionPointGroup(io->obj, id);
+			if(viewGroup != ObjVertGroup()) {
+				AnimLayer animlayer[MAX_ANIM_LAYERS];
+				for(size_t i = 0; i < MAX_ANIM_LAYERS; i++) {
+					animlayer[i] = io->animlayer[i];
+					if(animlayer[i].flags & EA_LOOP) {
+						animlayer[i].ctime = AnimationDuration(0);
+						animlayer[i].lastframe = -1;
+						animlayer[i].currentInterpolation = 0.f;
+						animlayer[i].currentFrame = 0;
+						animlayer[i].flags |= EA_PAUSED;
+					}
+				}
+				Skeleton skeleton = *io->obj->m_skeleton;
+				animateSkeleton(io, animlayer, skeleton);
+				const Bone & viewBone = skeleton.bones[viewGroup.handleData()];
+				g_playerCameraStablePos = viewBone.anim(io->obj->vertexlocal[id.handleData()]);
+			}
+			
+			if(!config.video.viewBobbing) {
+				g_playerCamera.m_pos = g_playerCameraStablePos;
+			}
 			
 			Vec3f vect(g_playerCamera.m_pos.x - player.pos.x, 0.f, g_playerCamera.m_pos.z - player.pos.z);
 			float len = ffsqrt(arx::length2(vect));
@@ -1364,13 +1352,13 @@ void ArxGame::updateFirstPersonCamera() {
 			}
 			
 		} else {
-			g_playerCamera.m_pos = player.basePosition();
+			g_playerCameraStablePos = g_playerCamera.m_pos = player.basePosition();
 		}
 		
 	}
 	
 	if(EXTERNALVIEW) {
-		g_playerCamera.m_pos = (g_playerCamera.m_pos + targetPos) * 0.5f;
+		g_playerCameraStablePos = g_playerCamera.m_pos = (g_playerCamera.m_pos + targetPos) * 0.5f;
 		g_playerCamera.angle = interpolate(g_playerCamera.angle, targetAngle, 0.1f);
 	}
 	
@@ -1975,17 +1963,9 @@ void ArxGame::renderLevel() {
 		if(SHOWLEVEL >= 0 && SHOWLEVEL < 32)
 			g_miniMap.showPlayerMiniMap(SHOWLEVEL);
 	}
-
-	// CURSOR Rendering
-
-	if(DRAGINTER) {
-		ARX_INTERFACE_RenderCursor(false);
-		PopAllTriangleListOpaque();
-		PopAllTriangleListTransparency();
-	} else {
-		ARX_INTERFACE_RenderCursor(false);
-	}
-
+	
+	ARX_INTERFACE_RenderCursor(false);
+	
 	CheatDrawText();
 
 	if(FADEDIR)
@@ -2023,16 +2003,14 @@ void ArxGame::render() {
 		if((player.Interface & INTER_COMBATMODE) || PLAYER_MOUSELOOK_ON) {
 			FlyingOverIO = NULL; // Avoid to check with those modes
 		} else {
-			if(!DRAGINTER) {
-				if(!BLOCK_PLAYER_CONTROLS
-					&& !TRUE_PLAYER_MOUSELOOK_ON
-					&& !g_cursorOverBook
-					&& eMouseState != MOUSE_IN_NOTE
-				) {
-					FlyingOverIO = FlyingOverObject(DANAEMouse);
-				} else {
-					FlyingOverIO = NULL;
-				}
+			if(!BLOCK_PLAYER_CONTROLS
+				&& !TRUE_PLAYER_MOUSELOOK_ON
+				&& !g_cursorOverBook
+				&& eMouseState != MOUSE_IN_NOTE
+			) {
+				FlyingOverIO = FlyingOverObject(DANAEMouse);
+			} else {
+				FlyingOverIO = NULL;
 			}
 		}
 		

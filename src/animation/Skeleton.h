@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-#include "glm/gtc/quaternion.hpp"
+#include <glm/gtc/quaternion.hpp>
 
 #include "math/Types.h"
 #include "math/Angle.h"
@@ -33,11 +33,11 @@ struct VertexGroup {
 	std::string       name;
 	size_t            origin;
 	std::vector<u32> indexes; // TODO use u16 here ?
-	float             siz;
+	float m_blobShadowSize;
 	
 	VertexGroup()
 		: origin(0)
-		, siz(0.0f)
+		, m_blobShadowSize(0.0f)
 	{ }
 	
 };
@@ -54,11 +54,14 @@ struct BoneTransform {
 		, scale(0.f) // TODO should this be 1.f?
 	{ }
 	
+	Vec3f operator()(const Vec3f & vec) const {
+		return trans + ( quat * vec ) * scale;
+	}
+	
 };
 
 struct Bone {
 	
-	std::vector<u32> idxvertices; // TODO use u16 here ?
 	long father;
 	
 	BoneTransform anim;
@@ -75,7 +78,9 @@ struct Bone {
 };
 
 struct Skeleton {
+	
 	std::vector<Bone> bones;
+	
 };
 
 #endif // ARX_ANIMATION_SKELETON_H

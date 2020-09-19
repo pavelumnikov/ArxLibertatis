@@ -23,6 +23,7 @@
 #include "core/TimeTypes.h"
 #include "game/GameTypes.h"
 #include "graphics/GraphicsTypes.h"
+#include "scene/Object.h"
 
 class Trail;
 
@@ -38,11 +39,13 @@ struct Projectile {
 	ProjectileFlags flags;
 	Vec3f vector;
 	glm::quat quat;
+	float gravity;
 	Vec3f initial_position;
-	float velocity;
 	Vec3f position;
 	float damages;
 	EERIE_3DOBJ * obj;
+	ActionPoint attach;
+	glm::quat rotation;
 	EntityHandle source;
 	GameInstant creation_time;
 	float poisonous;
@@ -52,11 +55,12 @@ struct Projectile {
 		: flags(0)
 		, vector(0.f)
 		, quat(quat_identity())
+		, gravity(0.f)
 		, initial_position(0.f)
-		, velocity(0.f)
 		, position(0.f)
 		, damages(0)
 		, obj(NULL)
+		, rotation(quat_identity())
 		, creation_time(0)
 		, poisonous(0.f)
 		, m_trail(NULL)
@@ -64,7 +68,11 @@ struct Projectile {
 	
 };
 
-void ARX_THROWN_OBJECT_Throw(EntityHandle source, const Vec3f & position, const Vec3f & vect, const glm::quat & quat, float velocity, float damages, float poisonous);
+glm::quat getProjectileQuatFromVector(Vec3f vector);
+
+void ARX_THROWN_OBJECT_Throw(EntityHandle source, const Vec3f & position, const Vec3f & vect, float gravity,
+                             EERIE_3DOBJ * obj, ActionPoint attach, const glm::quat & rotation,
+                             float damages, float poisonous);
 
 void ARX_THROWN_OBJECT_KillAll();
 void ARX_THROWN_OBJECT_Manage(GameDuration timeDelta);

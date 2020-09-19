@@ -29,6 +29,7 @@
 #include "graphics/Draw.h"
 #include "graphics/data/TextureContainer.h"
 #include "gui/Cursor.h"
+#include "gui/Dragging.h"
 #include "gui/Hud.h"
 #include "gui/Interface.h"
 #include "input/Input.h"
@@ -488,14 +489,18 @@ void PlayerInventoryHud::dropEntity() {
 		return;
 	}
 	
-	if(m_inventoryY != 0)
+	if(m_inventoryY != 0) {
 		return;
+	}
 	
-	if(!g_playerInventoryHud.containsPos(DANAEMouse))
+	Vec2s mouse = DANAEMouse + Vec2s(g_draggedIconOffset);
+	
+	if(!g_playerInventoryHud.containsPos(mouse)) {
 		return;
+	}
 	
 	// If inventories overlap entity might have been dropped alreadry
-	if(!DRAGINTER) {
+	if(!g_draggedEntity) {
 		return;
 	}
 	
@@ -503,22 +508,33 @@ void PlayerInventoryHud::dropEntity() {
 	s16 itemPitch = s16(32.f * m_scale);
 	
 	int bag = m_currentBag;
-	Vec2f pos = Vec2f(DANAEMouse - anchor) / float(itemPitch);
+	Vec2f pos = Vec2f(mouse - anchor) / float(itemPitch);
 	if(player.Interface & INTER_INVENTORYALL) {
 		s16 bagPitch = s16(121.f * m_scale);
-		s16 topAnchor = anchor.y - (player.m_bags - 1) * bagPitch - DRAGINTER->m_inventorySize.y * itemPitch / 2;
-		bag = glm::clamp((DANAEMouse.y - topAnchor) / bagPitch, 0, player.m_bags - 1);
-		pos = Vec2f(DANAEMouse - (anchor - Vec2s(0, (player.m_bags - 1 - bag) * bagPitch))) / float(itemPitch);
+		s16 topAnchor = anchor.y - (player.m_bags - 1) * bagPitch - g_draggedEntity->m_inventorySize.y * itemPitch / 2;
+		bag = glm::clamp((mouse.y - topAnchor) / bagPitch, 0, player.m_bags - 1);
+		pos = Vec2f(mouse - (anchor - Vec2s(0, (player.m_bags - 1 - bag) * bagPitch))) / float(itemPitch);
 	}
 	
-	insertIntoInventoryAt(DRAGINTER, entities.player(), bag, pos, g_draggedItemPreviousPosition);
+	insertIntoInventoryAt(g_draggedEntity, entities.player(), bag, pos, g_draggedItemPreviousPosition);
 	
 }
 
 void PlayerInventoryHud::dragEntity(Entity * io) {
 	
 	arx_assert(io->ioflags & IO_ITEM);
-	arx_assert(locateInInventories(io).io == EntityHandle_Player);
+	
+	InventoryPos pos = locateInInventories(io);
+	arx_assert(pos.io == EntityHandle_Player);
+	Vec2s anchor = Vec2s(g_playerInventoryHud.anchorPosition()) + Vec2s(m_slotSpacing * m_scale);
+	s16 itemPitch = s16(32.f * m_scale);
+	if(player.Interface & INTER_INVENTORYALL) {
+		s16 bagPitch = s16(121.f * m_scale);
+		anchor.y -= (player.m_bags - 1 - pos.bag) * bagPitch;
+	}
+	Vec2f offset(anchor + Vec2s(pos.x, pos.y) * itemPitch - DANAEMouse);
+	
+	ARX_SOUND_PlayInterface(g_snd.INVSTD);
 	
 	// Take only one item from stacks unless requested otherwise
 	if(io->_itemdata->count > 1 && !GInput->actionPressed(CONTROLS_CUST_STEALTHMODE)) {
@@ -526,14 +542,15 @@ void PlayerInventoryHud::dragEntity(Entity * io) {
 		unstackedEntity->scriptload = 1;
 		unstackedEntity->_itemdata->count = 1;
 		io->_itemdata->count--;
-		ARX_SOUND_PlayInterface(g_snd.INVSTD);
-		Set_DragInter(unstackedEntity);
+		setDraggedEntity(unstackedEntity);
 		g_draggedItemPreviousPosition = locateInInventories(io);
+		g_draggedIconOffset = offset;
 		ARX_INVENTORY_IdentifyIO(unstackedEntity);
 		return;
 	}
 	
-	Set_DragInter(io);
+	setDraggedEntity(io);
+	g_draggedIconOffset = offset;
 	ARX_INVENTORY_IdentifyIO(io);
 	
 }
