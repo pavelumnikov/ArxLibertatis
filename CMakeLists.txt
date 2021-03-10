@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.3...3.15)
+cmake_minimum_required(VERSION 2.8.3...3.19)
 
 if(CMAKE_VERSION VERSION_LESS 3.12)
 	cmake_policy(VERSION ${CMAKE_VERSION})
@@ -1735,6 +1735,7 @@ if(BUILD_TOOLS)
 		${PLATFORM_CONSOLE_SOURCES}
 		${IO_RESOURCE_SOURCES}
 		${UTIL_CMDLINE_SOURCES}
+		${MATH_SOURCES}
 		src/core/Localisation.cpp
 		src/io/SaveBlock.cpp
 		src/io/IniReader.cpp
